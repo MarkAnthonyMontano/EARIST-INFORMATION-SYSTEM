@@ -1346,7 +1346,7 @@ app.post("/api/qualifying_exam/import", async (req, res) => {
       [values]
     );
 
-    res.json({ success: true, message: `✅ Import done. Updated: ${values.length}, Skipped: ${skippedCount}` });
+    res.json({ success: true, message: `Excel imported successfully!` });
   } catch (err) {
     console.error("❌ Bulk import error:", err);
     res.status(500).json({ success: false, error: err.message });
@@ -3560,7 +3560,7 @@ app.post("/api/exam/import", upload.single("file"), async (req, res) => {
 
     res.json({
       success: true,
-      message: `✅ Import done. Inserted/updated: ${values.length}, Skipped: ${skippedCount}`,
+      message: `Excel imported successfully!`,
     });
   } catch (err) {
     console.error("❌ Excel import error:", err);
@@ -5490,27 +5490,6 @@ app.get("/room_list/:dprtmnt_id", async (req, res) => {
   }
 });
 
-app.get("/section_table/:dprtmnt_id", async (req, res) => {
-  const { dprtmnt_id } = req.params;
-
-  try {
-    const query = `
-      SELECT st.*, pt.*
-      FROM dprtmnt_curriculum_table AS dct
-      INNER JOIN dprtmnt_section_table AS dst ON dct.curriculum_id = dst.curriculum_id
-      INNER JOIN section_table AS st ON dst.section_id = st.id
-      INNER JOIN curriculum_table AS ct ON dct.curriculum_id = ct.curriculum_id
-      INNER JOIN program_table AS pt ON ct.program_id = pt.program_id
-      WHERE dct.dprtmnt_id = ?;
-    `;
-
-    const [results] = await db3.query(query, [dprtmnt_id]);
-    res.status(200).send(results);
-  } catch (error) {
-    console.error(error);
-    res.status(500).send(error);
-  }
-});
 
 app.get("/day_list", async (req, res) => {
   try {
@@ -7444,6 +7423,95 @@ app.get("/api/student/faculty_evaluation/answer/:course_id/:prof_id/:curriculum_
   }
 }
 );
+
+app.get("/api/get/all_schedule/:roomID", async (req, res) => {
+  const { roomID} = req.params;
+  console.log("RoomID:", roomID);
+
+  try{
+    const scheduleQuery = `
+      SELECT 
+        tt.room_day, 
+        rdt.description AS day_description, 
+        tt.school_time_start, 
+        tt.school_time_end, 
+        pft.lname AS prof_lastname, 
+        pft.fname AS prof_firstname,
+        cst.course_code,
+        rmt.room_description,
+        pgt.program_code,
+        st.description AS section_description
+      FROM time_table AS tt
+        JOIN room_day_table AS rdt ON tt.room_day = rdt.id
+        JOIN dprtmnt_section_table AS dst ON tt.department_section_id = dst.id
+        JOIN curriculum_table AS cct ON dst.curriculum_id = cct.curriculum_id
+        JOIN program_table AS pgt ON cct.program_id = pgt.program_id
+        JOIN course_table AS cst ON tt.course_id = cst.course_id
+        JOIN prof_table AS pft ON tt.professor_id = pft.prof_id
+        JOIN active_school_year_table AS syt ON tt.school_year_id = syt.id
+        JOIN room_table AS rmt ON tt.department_room_id = rmt.room_id
+        JOIN section_table AS st ON dst.section_id = st.id
+        JOIN active_school_year_table AS sy ON tt.school_year_id = sy.id
+      WHERE rmt.room_id = ? AND sy.astatus = 1;
+    `
+    const [schedule] = await db3.execute(scheduleQuery, [roomID]);
+
+    if (schedule.length === 0) {
+      return res.status(404).json({ error: "Schedule not found" });
+    }
+
+    console.log(schedule);
+    res.json(schedule);
+  } catch (error) {
+    console.error("Error fetching person:", error);
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
+//Get Section List From Selected Department
+app.get("/section_table/:dprtmnt_id", async (req, res) => {
+  const { dprtmnt_id } = req.params;
+
+  try {
+    const query = `
+      SELECT dst.id as dep_section_id, st.*, pt.*
+      FROM dprtmnt_curriculum_table AS dct
+      INNER JOIN dprtmnt_section_table AS dst ON dct.curriculum_id = dst.curriculum_id
+      INNER JOIN section_table AS st ON dst.section_id = st.id
+      INNER JOIN curriculum_table AS ct ON dct.curriculum_id = ct.curriculum_id
+      INNER JOIN program_table AS pt ON ct.program_id = pt.program_id
+      WHERE dct.dprtmnt_id = ?;
+    `;
+
+    const [results] = await db3.query(query, [dprtmnt_id]);
+    res.status(200).send(results);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send(error);
+  }
+});
+
+//Get Program List From Selected Department
+app.get("/program_list/:dprtmnt_id", async (req, res) => {
+  const { dprtmnt_id } = req.params;
+
+  try {
+    const query = `
+      SELECT pt.program_id, pt.program_description, pt.program_code, pt.major  
+      FROM dprtmnt_curriculum_table AS dct
+      INNER JOIN curriculum_table AS ct ON dct.curriculum_id = ct.curriculum_id
+      INNER JOIN program_table AS pt ON ct.program_id = pt.program_id
+      WHERE dct.dprtmnt_id = ?;
+    `;
+
+    const [results] = await db3.query(query, [dprtmnt_id]);
+    res.status(200).send(results);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send(error);
+  }
+});
+
 
 http.listen(5000, () => {
   console.log("Server with Socket.IO running on port 5000");

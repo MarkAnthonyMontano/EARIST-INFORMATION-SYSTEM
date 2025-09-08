@@ -75,7 +75,7 @@ const ApplicantList = () => {
     };
 
 
-   
+
 
 
     const [persons, setPersons] = useState([]);
@@ -544,108 +544,108 @@ const ApplicantList = () => {
     };
 
     // when import button clicked
-  const handleImport = async () => {
-    try {
-        if (!selectedFile) {
-            setSnack({ open: true, message: "Please choose a file first!", severity: "warning" });
-            return;
+    const handleImport = async () => {
+        try {
+            if (!selectedFile) {
+                setSnack({ open: true, message: "Please choose a file first!", severity: "warning" });
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append("file", selectedFile);
+
+            const res = await axios.post("http://localhost:5000/api/exam/import", formData, {
+                headers: { "Content-Type": "multipart/form-data" },
+            });
+
+            if (res.data.success) {
+                setSnack({ open: true, message: "Excel imported successfully!", severity: "success" });
+                fetchApplicants(); // ✅ refresh scores
+                setSelectedFile(null); // reset file input
+            } else {
+                setSnack({ open: true, message: res.data.error || "Failed to import", severity: "error" });
+            }
+        } catch (err) {
+            console.error("❌ Import error:", err);
+            setSnack({ open: true, message: "Import failed: " + (err.response?.data?.error || err.message), severity: "error" });
         }
-
-        const formData = new FormData();
-        formData.append("file", selectedFile);
-
-        const res = await axios.post("http://localhost:5000/api/exam/import", formData, {
-            headers: { "Content-Type": "multipart/form-data" },
-        });
-
-        if (res.data.success) {
-            setSnack({ open: true, message: "Excel imported successfully!", severity: "success" });
-            fetchApplicants(); // ✅ refresh scores
-            setSelectedFile(null); // reset file input
-        } else {
-            setSnack({ open: true, message: res.data.error || "Failed to import", severity: "error" });
-        }
-    } catch (err) {
-        console.error("❌ Import error:", err);
-        setSnack({ open: true, message: "Import failed: " + (err.response?.data?.error || err.message), severity: "error" });
-    }
-};
+    };
 
     const [editScores, setEditScores] = useState({});
 
-// mimic Dashboard1's handleUpdate
-const handleUpdateScore = async (payload) => {
-  try {
-    await axios.post("http://localhost:5000/exam/save", payload);
-    console.log("✅ Auto-saved score:", payload);
-  } catch (error) {
-    console.error("❌ Auto-save failed (offline?) -> caching:", payload);
-    // store unsaved payload in localStorage
-    const pending = JSON.parse(localStorage.getItem("pendingScores") || "[]");
-    localStorage.setItem("pendingScores", JSON.stringify([...pending, payload]));
-  }
-};
+    // mimic Dashboard1's handleUpdate
+    const handleUpdateScore = async (payload) => {
+        try {
+            await axios.post("http://localhost:5000/exam/save", payload);
+            console.log("✅ Auto-saved score:", payload);
+        } catch (error) {
+            console.error("❌ Auto-save failed (offline?) -> caching:", payload);
+            // store unsaved payload in localStorage
+            const pending = JSON.parse(localStorage.getItem("pendingScores") || "[]");
+            localStorage.setItem("pendingScores", JSON.stringify([...pending, payload]));
+        }
+    };
 
-// run on mount + when online again (to sync pending scores)
-useEffect(() => {
-  const syncPendingScores = async () => {
-    const pending = JSON.parse(localStorage.getItem("pendingScores") || "[]");
-    if (pending.length === 0) return;
+    // run on mount + when online again (to sync pending scores)
+    useEffect(() => {
+        const syncPendingScores = async () => {
+            const pending = JSON.parse(localStorage.getItem("pendingScores") || "[]");
+            if (pending.length === 0) return;
 
-    const stillPending = [];
-    for (const p of pending) {
-      try {
-        await axios.post("http://localhost:5000/exam/save", p);
-        console.log("✅ Synced pending:", p);
-      } catch (err) {
-        stillPending.push(p);
-      }
-    }
-    localStorage.setItem("pendingScores", JSON.stringify(stillPending));
-  };
+            const stillPending = [];
+            for (const p of pending) {
+                try {
+                    await axios.post("http://localhost:5000/exam/save", p);
+                    console.log("✅ Synced pending:", p);
+                } catch (err) {
+                    stillPending.push(p);
+                }
+            }
+            localStorage.setItem("pendingScores", JSON.stringify(stillPending));
+        };
 
-  syncPendingScores();
-  window.addEventListener("online", syncPendingScores);
-  return () => window.removeEventListener("online", syncPendingScores);
-}, []);
+        syncPendingScores();
+        window.addEventListener("online", syncPendingScores);
+        return () => window.removeEventListener("online", syncPendingScores);
+    }, []);
 
-// now mimic Dashboard1's handleChange for exam scoring
-const handleScoreChange = (person, field, value) => {
-  // 1️⃣ Update UI instantly
-  setEditScores(prev => ({
-    ...prev,
-    [person.person_id]: {
-      ...prev[person.person_id],
-      [field]: value,
-    },
-  }));
+    // now mimic Dashboard1's handleChange for exam scoring
+    const handleScoreChange = (person, field, value) => {
+        // 1️⃣ Update UI instantly
+        setEditScores(prev => ({
+            ...prev,
+            [person.person_id]: {
+                ...prev[person.person_id],
+                [field]: value,
+            },
+        }));
 
-  // 2️⃣ Build payload using *new value for this field* + old values for others
-  const updatedScores = {
-    english: field === "english" ? value : (editScores[person.person_id]?.english ?? person.english ?? 0),
-    science: field === "science" ? value : (editScores[person.person_id]?.science ?? person.science ?? 0),
-    filipino: field === "filipino" ? value : (editScores[person.person_id]?.filipino ?? person.filipino ?? 0),
-    math: field === "math" ? value : (editScores[person.person_id]?.math ?? person.math ?? 0),
-    abstract: field === "abstract" ? value : (editScores[person.person_id]?.abstract ?? person.abstract ?? 0),
-  };
+        // 2️⃣ Build payload using *new value for this field* + old values for others
+        const updatedScores = {
+            english: field === "english" ? value : (editScores[person.person_id]?.english ?? person.english ?? 0),
+            science: field === "science" ? value : (editScores[person.person_id]?.science ?? person.science ?? 0),
+            filipino: field === "filipino" ? value : (editScores[person.person_id]?.filipino ?? person.filipino ?? 0),
+            math: field === "math" ? value : (editScores[person.person_id]?.math ?? person.math ?? 0),
+            abstract: field === "abstract" ? value : (editScores[person.person_id]?.abstract ?? person.abstract ?? 0),
+        };
 
-  const payload = {
-    applicant_number: person.applicant_number,
-    ...updatedScores,
-    final_rating:
-      (
-        Number(updatedScores.english || 0) +
-        Number(updatedScores.science || 0) +
-        Number(updatedScores.filipino || 0) +
-        Number(updatedScores.math || 0) +
-        Number(updatedScores.abstract || 0)
-      ) / 5,
-    user: localStorage.getItem("email"),
-  };
+        const payload = {
+            applicant_number: person.applicant_number,
+            ...updatedScores,
+            final_rating:
+                (
+                    Number(updatedScores.english || 0) +
+                    Number(updatedScores.science || 0) +
+                    Number(updatedScores.filipino || 0) +
+                    Number(updatedScores.math || 0) +
+                    Number(updatedScores.abstract || 0)
+                ) / 5,
+            user: localStorage.getItem("email"),
+        };
 
-  // 3️⃣ Auto-save immediately (like Dashboard1 handleUpdate)
-  handleUpdateScore(payload);
-};
+        // 3️⃣ Auto-save immediately (like Dashboard1 handleUpdate)
+        handleUpdateScore(payload);
+    };
 
 
     return (
