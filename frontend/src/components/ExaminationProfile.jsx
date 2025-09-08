@@ -12,8 +12,8 @@ import { QRCodeSVG } from "qrcode.react";
 const ExaminationProfile = () => {
 
     const tabs = [
-        { label: "Room Scheduling", to: "/assign_entrance_exam" },
-        { label: "Applicant's Scheduling", to: "/assign_schedule_applicant" },
+        { label: "Entrance Exam Room Assignment", to: "/assign_entrance_exam" },
+        { label: "Entrance Exam Schedule Management", to: "/assign_schedule_applicant" },
         { label: "Examination Profile", to: "/examination_profile" },
         { label: "Proctor's Applicant List", to: "/proctor_applicant_list" },
     ];

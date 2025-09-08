@@ -1283,11 +1283,13 @@ app.get("/exam_schedules_with_count", async (req, res) => {
       SELECT 
         ees.schedule_id,
         ees.day_description,
+        ees.building_description,
         ees.room_description,
         ees.start_time,
         ees.proctor,
         ees.end_time,
         ees.room_quota,
+        ees.created_at,
         COUNT(ea.applicant_id) AS current_occupancy
       FROM admission.entrance_exam_schedule ees
       LEFT JOIN admission.exam_applicants ea
@@ -1416,45 +1418,41 @@ app.get("/api/applicants-with-number", async (req, res) => {
 });
 
 // Get full person info + applicant_number
-// Get full person info + applicant_number + latest document_status
 app.get("/api/person_with_applicant/:id", async (req, res) => {
-  const { id } = req.params;
+  const { id } = req.params; // can be person_id or applicant_number
   try {
-    // Get person + applicant number
-    const [rows] = await db.query(`
+    const [rows] = await db.query(
+      `
       SELECT 
         p.*,
-        a.applicant_number
+        an.applicant_number,
+        COALESCE(ps.qualifying_result, 0)  AS qualifying_exam_score,
+        COALESCE(ps.interview_result, 0)   AS qualifying_interview_score,
+        COALESCE(ps.exam_result, 0)        AS exam_score
       FROM person_table p
-      LEFT JOIN applicant_numbering_table a 
-        ON p.person_id = a.person_id
-      WHERE p.person_id = ?
-    `, [id]);
+      LEFT JOIN applicant_numbering_table an ON an.person_id = p.person_id
+      LEFT JOIN person_status_table ps       ON ps.person_id = p.person_id
+      WHERE p.person_id = ? OR an.applicant_number = ?
+      LIMIT 1
+      `,
+      [id, id]
+    );
 
-    if (rows.length === 0) {
-      return res.status(404).json({ error: "Person not found" });
-    }
+    if (rows.length === 0) return res.status(404).json({ error: "Person not found" });
 
     const person = rows[0];
 
-    // 🔎 Get latest document_status from requirement_uploads
+    // Get latest document_status (same logic you already had)
     const [uploads] = await db.query(
       `SELECT document_status 
        FROM requirement_uploads 
-       WHERE person_id = ? 
-         AND document_status IS NOT NULL 
+       WHERE person_id = ? AND document_status IS NOT NULL 
        ORDER BY upload_id DESC 
        LIMIT 1`,
-      [id]
+      [person.person_id]
     );
 
-    // ✅ If found, override person.document_status
-    if (uploads.length > 0) {
-      person.document_status = uploads[0].document_status;
-    } else {
-      person.document_status = "On process"; // fallback
-    }
-
+    person.document_status = uploads.length ? uploads[0].document_status : "On process";
     res.json(person);
   } catch (err) {
     console.error("Error fetching person_with_applicant:", err);
@@ -3223,8 +3221,8 @@ io.on("connection", (socket) => {
         s.day_description AS date_of_exam,
         s.start_time,
         s.end_time,
+        s.building_description,
         s.room_description,
-        s.room_no,
         s.proctor,
         s.created_at AS schedule_created_at
       FROM exam_applicants ea
@@ -3279,8 +3277,8 @@ io.on("connection", (socket) => {
         `SELECT 
           s.schedule_id,
           s.day_description,
+          s.building_description,
           s.room_description,
-          s.room_no,
           s.start_time,
           s.end_time,
           s.proctor,
@@ -3309,8 +3307,8 @@ io.on("connection", (socket) => {
 
 
   // Get applicants assigned to a proctor
-  app.get("/api/proctor-applicants/:proctor_id", async (req, res) => {
-    const { proctor_id } = req.params;
+  app.get("/api/proctor-applicants/:proctor_name", async (req, res) => {
+    const { proctor_name } = req.params;
     try {
       const [rows] = await db.query(`
       SELECT 
@@ -3320,23 +3318,25 @@ io.on("connection", (socket) => {
         pt.middle_name,
         pt.last_name,
         pt.program,
-        es.exam_date,
-        es.room_name,
-        es.room_no,
-        u.email AS proctor_email
+        ees.day_description,
+        ees.room_description,
+        ees.building_description,
+        ees.start_time,
+        ees.end_time,
+        ees.proctor
       FROM exam_applicants ea
       JOIN applicant_numbering_table an ON ea.applicant_id = an.applicant_number
       JOIN person_table pt ON an.person_id = pt.person_id
-      JOIN exam_schedule es ON ea.schedule_id = es.exam_id
-      JOIN user_accounts u ON es.proctor_id = u.id
-      WHERE es.proctor_id = ?
-    `, [proctor_id]);
+      JOIN entrance_exam_schedule ees ON ea.schedule_id = ees.schedule_id
+      WHERE ees.proctor = ?
+    `, [proctor_name]);
       res.json(rows);
     } catch (err) {
       console.error("❌ Error fetching proctor applicants:", err);
       res.status(500).json({ error: "Failed to fetch applicants for proctor" });
     }
   });
+
 
   // Search proctor by name and return their assigned applicants
   app.get("/api/proctor-applicants", async (req, res) => {
@@ -3349,7 +3349,7 @@ io.on("connection", (socket) => {
     try {
       // Find schedules where this proctor is assigned
       const [schedules] = await db.query(
-        `SELECT schedule_id, day_description, room_description, room_no, start_time, end_time, proctor
+        `SELECT schedule_id, day_description, room_description, building_description, start_time, end_time, proctor
 FROM entrance_exam_schedule
 WHERE proctor LIKE ?
 `,
@@ -3464,86 +3464,86 @@ WHERE proctor LIKE ?
 
   // 🔹 Import exam scores from Excel (using Applicant ID)
   // ✅ Assuming you have req.user from login/session
-// ✅ Fast bulk import for exam scores (fixed column count)
-app.post("/api/exam/import", upload.single("file"), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ error: "No file uploaded" });
-    }
-
-    const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
-    const sheetName = workbook.SheetNames[0];
-    const sheet = workbook.Sheets[sheetName];
-    const rows = XLSX.utils.sheet_to_json(sheet);
-
-    // 🔑 Hardcode for now, later get from req.user
-    const loggedInUserId = 1;
-
-    // 1️⃣ Collect all applicant numbers
-    const applicantNumbers = rows
-      .map(r => r["Applicant ID"] || r["applicant_number"])
-      .filter(n => n);
-
-    if (applicantNumbers.length === 0) {
-      return res.status(400).json({ error: "No valid applicant numbers" });
-    }
-
-    // 2️⃣ Get all person_id mappings in one query
-    const [matches] = await db.query(
-      `SELECT person_id, applicant_number 
-       FROM applicant_numbering_table 
-       WHERE applicant_number IN (?)`,
-      [applicantNumbers]
-    );
-
-    const applicantMap = {};
-    matches.forEach(m => {
-      applicantMap[m.applicant_number] = m.person_id;
-    });
-
-    // 3️⃣ Prepare bulk insert values
-    const values = [];
-    let skippedCount = 0;
-    const now = new Date(); // ✅ consistent timestamp for all rows
-
-    for (const row of rows) {
-      const applicantNumber = row["Applicant ID"] || row["applicant_number"];
-      const personId = applicantMap[applicantNumber];
-
-      if (!personId) {
-        skippedCount++;
-        continue;
+  // ✅ Fast bulk import for exam scores (fixed column count)
+  app.post("/api/exam/import", upload.single("file"), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded" });
       }
 
-      const english = Number(row["English"] || 0);
-      const science = Number(row["Science"] || 0);
-      const filipino = Number(row["Filipino"] || 0);
-      const math = Number(row["Math"] || 0);
-      const abstract = Number(row["Abstract"] || 0);
+      const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+      const sheetName = workbook.SheetNames[0];
+      const sheet = workbook.Sheets[sheetName];
+      const rows = XLSX.utils.sheet_to_json(sheet);
 
-      // ✅ Compute average final rating
-      const finalRating = (english + science + filipino + math + abstract) / 5;
+      // 🔑 Hardcode for now, later get from req.user
+      const loggedInUserId = 1;
 
-      values.push([
-        personId,
-        english,
-        science,
-        filipino,
-        math,
-        abstract,
-        finalRating,
-        loggedInUserId,
-        now // ✅ add date_created
-      ]);
-    }
+      // 1️⃣ Collect all applicant numbers
+      const applicantNumbers = rows
+        .map(r => r["Applicant ID"] || r["applicant_number"])
+        .filter(n => n);
 
-    if (values.length === 0) {
-      return res.status(400).json({ error: "No valid data to import" });
-    }
+      if (applicantNumbers.length === 0) {
+        return res.status(400).json({ error: "No valid applicant numbers" });
+      }
 
-    // 4️⃣ Bulk insert
-    await db.query(
-      `INSERT INTO admission_exam 
+      // 2️⃣ Get all person_id mappings in one query
+      const [matches] = await db.query(
+        `SELECT person_id, applicant_number 
+       FROM applicant_numbering_table 
+       WHERE applicant_number IN (?)`,
+        [applicantNumbers]
+      );
+
+      const applicantMap = {};
+      matches.forEach(m => {
+        applicantMap[m.applicant_number] = m.person_id;
+      });
+
+      // 3️⃣ Prepare bulk insert values
+      const values = [];
+      let skippedCount = 0;
+      const now = new Date(); // ✅ consistent timestamp for all rows
+
+      for (const row of rows) {
+        const applicantNumber = row["Applicant ID"] || row["applicant_number"];
+        const personId = applicantMap[applicantNumber];
+
+        if (!personId) {
+          skippedCount++;
+          continue;
+        }
+
+        const english = Number(row["English"] || 0);
+        const science = Number(row["Science"] || 0);
+        const filipino = Number(row["Filipino"] || 0);
+        const math = Number(row["Math"] || 0);
+        const abstract = Number(row["Abstract"] || 0);
+
+        // ✅ Compute average final rating
+        const finalRating = (english + science + filipino + math + abstract) / 5;
+
+        values.push([
+          personId,
+          english,
+          science,
+          filipino,
+          math,
+          abstract,
+          finalRating,
+          loggedInUserId,
+          now // ✅ add date_created
+        ]);
+      }
+
+      if (values.length === 0) {
+        return res.status(400).json({ error: "No valid data to import" });
+      }
+
+      // 4️⃣ Bulk insert
+      await db.query(
+        `INSERT INTO admission_exam 
         (person_id, English, Science, Filipino, Math, Abstract, final_rating, user, date_created)
        VALUES ?
        ON DUPLICATE KEY UPDATE
@@ -3555,18 +3555,18 @@ app.post("/api/exam/import", upload.single("file"), async (req, res) => {
          final_rating = VALUES(final_rating),
          user = VALUES(user),
          date_created = VALUES(date_created)`,
-      [values]
-    );
+        [values]
+      );
 
-    res.json({
-      success: true,
-      message: `Excel imported successfully!`,
-    });
-  } catch (err) {
-    console.error("❌ Excel import error:", err);
-    res.status(500).json({ error: "Failed to import Excel" });
-  }
-});
+      res.json({
+        success: true,
+        message: `Excel imported successfully!`,
+      });
+    } catch (err) {
+      console.error("❌ Excel import error:", err);
+      res.status(500).json({ error: "Failed to import Excel" });
+    }
+  });
 
 
 
@@ -3576,14 +3576,14 @@ app.post("/api/exam/import", upload.single("file"), async (req, res) => {
   // ==============================
 
 
-  
-  // 1. Get interview by applicant_number
-app.get("/api/interview/:applicant_number", async (req, res) => {
-  const { applicant_number } = req.params;
 
-  try {
-    const [rows] = await db.query(
-      `
+  // 1. Get interview by applicant_number
+  app.get("/api/interview/:applicant_number", async (req, res) => {
+    const { applicant_number } = req.params;
+
+    try {
+      const [rows] = await db.query(
+        `
       SELECT 
         a.applicant_number,
         a.person_id,
@@ -3594,145 +3594,145 @@ app.get("/api/interview/:applicant_number", async (req, res) => {
       LEFT JOIN person_status_table ps ON ps.person_id = a.person_id
       WHERE a.applicant_number = ?
       `,
-      [applicant_number]
-    );
+        [applicant_number]
+      );
 
-    if (!rows.length) return res.json(null);
+      if (!rows.length) return res.json(null);
 
-    const row = rows[0];
-    res.json({
-      applicant_number: row.applicant_number,
-      person_id: row.person_id,
-      qualifying_exam_score: row.qualifying_exam_score ?? 0,
-      qualifying_interview_score: row.qualifying_interview_score ?? 0,
-      total_ave: row.total_ave ?? 0,
-    });
-  } catch (err) {
-    console.error("❌ Error fetching interview:", err);
-    res.status(500).json({ message: "Server error" });
-  }
-});
-
- 
-// 2) PUT update (must exist)
-app.put("/api/interview/:applicant_number", async (req, res) => {
-  const { applicant_number } = req.params;
-  const { qualifying_exam_score, qualifying_interview_score } = req.body;
-
-  try {
-    const person_id = await getPersonIdByApplicantNumber(applicant_number);
-    if (!person_id) {
-      return res.status(404).json({ success: false, message: "Applicant not found" });
+      const row = rows[0];
+      res.json({
+        applicant_number: row.applicant_number,
+        person_id: row.person_id,
+        qualifying_exam_score: row.qualifying_exam_score ?? 0,
+        qualifying_interview_score: row.qualifying_interview_score ?? 0,
+        total_ave: row.total_ave ?? 0,
+      });
+    } catch (err) {
+      console.error("❌ Error fetching interview:", err);
+      res.status(500).json({ message: "Server error" });
     }
+  });
 
-    const qExam = Number(qualifying_exam_score) || 0;
-    const qInterview = Number(qualifying_interview_score) || 0;
-    const totalAve = (qExam + qInterview) / 2;
 
-    const [result] = await db.query(
-      `
-      UPDATE person_status_table
-      SET qualifying_result = ?, interview_result = ?, exam_result = ?
-      WHERE person_id = ?
-      `,
-      [qExam, qInterview, totalAve, person_id]
-    );
+  // 2) PUT update (must exist)
+  app.put("/api/interview/:applicant_number", async (req, res) => {
+    const { applicant_number } = req.params;
+    const { qualifying_exam_score, qualifying_interview_score } = req.body;
 
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ success: false, message: "Record not found" });
-    }
+    try {
+      const person_id = await getPersonIdByApplicantNumber(applicant_number);
+      if (!person_id) {
+        return res.status(404).json({ success: false, message: "Applicant not found" });
+      }
 
-    res.json({ success: true, message: "Scores updated successfully" });
-  } catch (err) {
-    console.error("❌ Error updating scores:", err);
-    res.status(500).json({ success: false, message: "Server error" });
-  }
-});
+      const qExam = Number(qualifying_exam_score) || 0;
+      const qInterview = Number(qualifying_interview_score) || 0;
+      const totalAve = (qExam + qInterview) / 2;
 
-// ---------------------------------------------------------
-// 2) SAVE or UPDATE (UPSERT) using person_status_table
-//    Payload: { applicant_number, qualifying_exam_score, qualifying_interview_score }
-//    Mapping -> qualifying_result, interview_result, exam_result
-// ---------------------------------------------------------
-app.post("/api/interview", async (req, res) => {
-  try {
-    const { applicant_number, qualifying_exam_score, qualifying_interview_score } = req.body;
-    console.log("📥 Payload:", req.body);
-
-    // Resolve person_id
-    const person_id = await getPersonIdByApplicantNumber(applicant_number);
-    if (!person_id) {
-      return res.status(404).json({ error: "Applicant not found" });
-    }
-
-    // Compute scores
-    const qExam = Number(qualifying_exam_score) || 0;
-    const qInterview = Number(qualifying_interview_score) || 0;
-    const totalAve = (qExam + qInterview) / 2;
-
-    // Update → insert if none
-    const [updateResult] = await db.query(
-      `
-      UPDATE person_status_table
-      SET qualifying_result = ?, interview_result = ?, exam_result = ?
-      WHERE person_id = ?
-      `,
-      [qExam, qInterview, totalAve, person_id]
-    );
-
-    if (updateResult.affectedRows === 0) {
-      await db.query(
+      const [result] = await db.query(
         `
+      UPDATE person_status_table
+      SET qualifying_result = ?, interview_result = ?, exam_result = ?
+      WHERE person_id = ?
+      `,
+        [qExam, qInterview, totalAve, person_id]
+      );
+
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ success: false, message: "Record not found" });
+      }
+
+      res.json({ success: true, message: "Scores updated successfully" });
+    } catch (err) {
+      console.error("❌ Error updating scores:", err);
+      res.status(500).json({ success: false, message: "Server error" });
+    }
+  });
+
+  // ---------------------------------------------------------
+  // 2) SAVE or UPDATE (UPSERT) using person_status_table
+  //    Payload: { applicant_number, qualifying_exam_score, qualifying_interview_score }
+  //    Mapping -> qualifying_result, interview_result, exam_result
+  // ---------------------------------------------------------
+  app.post("/api/interview", async (req, res) => {
+    try {
+      const { applicant_number, qualifying_exam_score, qualifying_interview_score } = req.body;
+      console.log("📥 Payload:", req.body);
+
+      // Resolve person_id
+      const person_id = await getPersonIdByApplicantNumber(applicant_number);
+      if (!person_id) {
+        return res.status(404).json({ error: "Applicant not found" });
+      }
+
+      // Compute scores
+      const qExam = Number(qualifying_exam_score) || 0;
+      const qInterview = Number(qualifying_interview_score) || 0;
+      const totalAve = (qExam + qInterview) / 2;
+
+      // Update → insert if none
+      const [updateResult] = await db.query(
+        `
+      UPDATE person_status_table
+      SET qualifying_result = ?, interview_result = ?, exam_result = ?
+      WHERE person_id = ?
+      `,
+        [qExam, qInterview, totalAve, person_id]
+      );
+
+      if (updateResult.affectedRows === 0) {
+        await db.query(
+          `
         INSERT INTO person_status_table (person_id, qualifying_result, interview_result, exam_result)
         VALUES (?, ?, ?, ?)
         `,
-        [person_id, qExam, qInterview, totalAve]
-      );
+          [person_id, qExam, qInterview, totalAve]
+        );
+      }
+
+      res.json({ message: "Scores saved successfully" });
+    } catch (err) {
+      console.error("🔥 Error saving scores:", err);
+      res.status(500).json({ error: err.message });
     }
+  });
 
-    res.json({ message: "Scores saved successfully" });
-  } catch (err) {
-    console.error("🔥 Error saving scores:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
+  // ---------------------------------------------------------
+  // 3) Update by applicant_number (same mapping)
+  // ---------------------------------------------------------
+  app.put("/api/interview/:applicant_number", async (req, res) => {
+    const { applicant_number } = req.params;
+    const { qualifying_exam_score, qualifying_interview_score } = req.body;
 
-// ---------------------------------------------------------
-// 3) Update by applicant_number (same mapping)
-// ---------------------------------------------------------
-app.put("/api/interview/:applicant_number", async (req, res) => {
-  const { applicant_number } = req.params;
-  const { qualifying_exam_score, qualifying_interview_score } = req.body;
+    try {
+      const person_id = await getPersonIdByApplicantNumber(applicant_number);
+      if (!person_id) {
+        return res.status(404).json({ success: false, message: "Applicant not found" });
+      }
 
-  try {
-    const person_id = await getPersonIdByApplicantNumber(applicant_number);
-    if (!person_id) {
-      return res.status(404).json({ success: false, message: "Applicant not found" });
-    }
+      const qExam = Number(qualifying_exam_score) || 0;
+      const qInterview = Number(qualifying_interview_score) || 0;
+      const totalAve = (qExam + qInterview) / 2;
 
-    const qExam = Number(qualifying_exam_score) || 0;
-    const qInterview = Number(qualifying_interview_score) || 0;
-    const totalAve = (qExam + qInterview) / 2;
-
-    const [result] = await db.query(
-      `
+      const [result] = await db.query(
+        `
       UPDATE person_status_table
       SET qualifying_result = ?, interview_result = ?, exam_result = ?
       WHERE person_id = ?
       `,
-      [qExam, qInterview, totalAve, person_id]
-    );
+        [qExam, qInterview, totalAve, person_id]
+      );
 
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ success: false, message: "Record not found" });
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ success: false, message: "Record not found" });
+      }
+
+      res.json({ success: true, message: "Scores updated successfully" });
+    } catch (err) {
+      console.error("❌ Error updating scores:", err);
+      res.status(500).json({ success: false, message: "Server error" });
     }
-
-    res.json({ success: true, message: "Scores updated successfully" });
-  } catch (err) {
-    console.error("❌ Error updating scores:", err);
-    res.status(500).json({ success: false, message: "Server error" });
-  }
-});
+  });
 
   // ---------------------- Assign Student Number ----------------------
   socket.on("assign-student-number", async (person_id) => {
@@ -3868,7 +3868,7 @@ app.get("/day_list", async (req, res) => {
 app.get("/room_list", async (req, res) => {
   try {
     const [results] = await db.query(
-      "SELECT room_id, room_description FROM enrollment.room_table ORDER BY room_description ASC"
+      "SELECT room_id, room_description, building_description FROM enrollment.room_table ORDER BY room_description ASC"
     );
     res.json(results);
   } catch (err) {
@@ -3878,46 +3878,517 @@ app.get("/room_list", async (req, res) => {
 });
 
 
+
 // ============================
 // POST - Insert Entrance Exam Schedule
 // ============================
-app.post("/insert_exam_schedule", async (req, res) => {
-  const { day_description, room_description, room_no, start_time, end_time, proctor, room_quota } = req.body;
+// ✅ Get all interview schedules
+app.get("/interview_schedules", async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT 
+        s.schedule_id,
+        s.day_description,
+        s.building_description,
+        s.room_description,
+        s.start_time,
+        s.end_time,
+        s.interviewer,
+        s.room_quota,
+        s.created_at
+      FROM admission.interview_exam_schedule s
+      ORDER BY s.day_description, s.start_time
+    `);
 
-  if (!day_description || !room_description || !room_no || !start_time || !end_time || !room_quota) {
-    return res.status(400).json({ error: "All fields are required, including room number and room quota." });
+    res.json(rows);
+  } catch (err) {
+    console.error("❌ Error fetching interview schedules:", err);
+    res.status(500).json({ error: "Failed to fetch interview schedules" });
+  }
+});
+
+// ✅ Get interview schedules with applicant counts
+// 3. Get interview schedules with occupancy count
+app.get("/interview_schedules_with_count", async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT 
+        s.schedule_id,
+        s.day_description,
+        s.building_description,
+        s.room_description,
+        s.start_time,
+        s.end_time,
+        s.interviewer,
+        s.room_quota,
+        IFNULL(COUNT(ia.applicant_id), 0) AS current_occupancy   -- ✅ always number, no undefined
+      FROM interview_exam_schedule s
+      LEFT JOIN interview_applicants ia 
+        ON s.schedule_id = ia.schedule_id
+      GROUP BY 
+        s.schedule_id, 
+        s.day_description,
+        s.building_description,
+        s.room_description,
+        s.start_time,
+        s.end_time,
+        s.interviewer,
+        s.room_quota
+      ORDER BY s.created_at DESC
+    `);
+
+    res.json(rows);
+  } catch (err) {
+    console.error("❌ Error fetching interview schedules with count:", err);
+    res.status(500).json({ error: "Failed to fetch interview schedules with count" });
+  }
+});
+
+
+// ================== INTERVIEW APPLICANTS API ==================
+
+// 1. Get interview applicants with applicant_number + person info
+app.get("/api/interview/applicants-with-number", async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT 
+        p.person_id,
+        a.applicant_number,
+        p.last_name,
+        p.first_name,
+        p.middle_name,
+        p.extension,
+        p.program,
+        p.emailAddress,
+        p.campus,
+        ia.schedule_id,
+        ia.email_sent
+      FROM interview_applicants ia
+      LEFT JOIN applicant_numbering_table a 
+        ON ia.applicant_id = a.applicant_number
+      LEFT JOIN person_table p 
+        ON a.person_id = p.person_id
+      ORDER BY p.last_name, p.first_name
+    `);
+    res.json(rows);
+  } catch (err) {
+    console.error("❌ Error fetching interview applicants:", err);
+    res.status(500).json({ error: "Failed to fetch interview applicants" });
+  }
+});
+
+// ================== INTERVIEW APPLICANTS API ==================
+
+// ================== INTERVIEW APPLICANTS API ==================
+
+// 1. Get not-emailed interview applicants
+app.get("/api/interview/not-emailed-applicants", async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT
+        p.person_id,
+        p.last_name,
+        p.first_name,
+        p.middle_name,
+        p.extension,
+        p.emailAddress,
+        p.program,
+        p.created_at,
+        a.applicant_number,
+        ia.schedule_id,
+        ia.email_sent,
+        ies.day_description,
+        ies.room_description,
+        ies.start_time,
+        ies.end_time,
+        ies.interviewer,
+        ps.interview_status
+      FROM interview_applicants ia
+      LEFT JOIN applicant_numbering_table a 
+        ON ia.applicant_id = a.applicant_number
+      LEFT JOIN person_table p 
+        ON a.person_id = p.person_id
+      LEFT JOIN interview_exam_schedule ies
+        ON ia.schedule_id = ies.schedule_id
+      LEFT JOIN person_status_table ps 
+        ON ps.person_id = p.person_id
+      WHERE (ia.email_sent = 0 OR ia.email_sent IS NULL)
+      ORDER BY p.last_name ASC, p.first_name ASC
+    `);
+
+    res.json(rows);
+  } catch (err) {
+    console.error("❌ Error fetching interview not-emailed applicants:", err);
+    res.status(500).send("Server error");
+  }
+});
+
+// 2. Get all interview schedules
+app.get("/interview_schedules", async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT *
+      FROM interview_exam_schedule
+      ORDER BY created_at DESC
+    `);
+    res.json(rows);
+  } catch (err) {
+    console.error("❌ Error fetching interview schedules:", err);
+    res.status(500).json({ error: "Failed to fetch interview schedules" });
+  }
+});
+
+// 3. Get interview schedules with occupancy count
+app.get("/interview_schedules_with_count", async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT 
+        s.schedule_id,
+        s.day_description,
+        s.building_description,
+        s.room_description,
+        s.start_time,
+        s.end_time,
+        s.interviewer,
+        s.room_quota,
+        COALESCE(COUNT(ia.applicant_id), 0) AS current_occupancy   -- ✅ no undefined
+      FROM interview_exam_schedule s
+      LEFT JOIN interview_applicants ia 
+        ON s.schedule_id = ia.schedule_id
+      GROUP BY s.schedule_id
+      ORDER BY s.created_at DESC
+    `);
+    res.json(rows);
+  } catch (err) {
+    console.error("❌ Error fetching interview schedules with count:", err);
+    res.status(500).json({ error: "Failed to fetch interview schedules with count" });
+  }
+});
+
+// 4. Unassign one applicant
+app.post("/unassign_interview", async (req, res) => {
+  const { applicant_number } = req.body;
+  try {
+    await db.query(
+      `UPDATE interview_applicants 
+       SET schedule_id = NULL 
+       WHERE applicant_id = ?`,
+      [applicant_number]
+    );
+    res.json({ success: true, message: `Applicant ${applicant_number} unassigned.` });
+  } catch (err) {
+    console.error("❌ Error unassigning interview applicant:", err);
+    res.status(500).json({ error: "Failed to unassign applicant." });
+  }
+});
+
+// 5. Unassign ALL applicants
+app.post("/unassign_all_from_interview", async (req, res) => {
+  const { schedule_id } = req.body;
+  try {
+    await db.query(
+      `UPDATE interview_applicants 
+       SET schedule_id = NULL 
+       WHERE schedule_id = ?`,
+      [schedule_id]
+    );
+    res.json({ success: true, message: `All applicants unassigned from schedule ${schedule_id}.` });
+  } catch (err) {
+    console.error("❌ Error unassigning all interview applicants:", err);
+    res.status(500).json({ error: "Failed to unassign all applicants." });
+  }
+});
+
+
+// ================== INTERVIEW SOCKET EVENTS ==================
+io.on("connection", (socket) => {
+  console.log("✅ New client connected for Interview Scheduling");
+
+  // Assign applicants (single, 40, custom — all handled here)
+  socket.on("update_interview_schedule", async ({ schedule_id, applicant_numbers }) => {
+    try {
+      if (!Array.isArray(applicant_numbers) || applicant_numbers.length === 0) {
+        socket.emit("update_schedule_result", { success: false, error: "No applicants provided." });
+        return;
+      }
+
+      // 🔍 1. Get schedule info (quota)
+      const [[schedule]] = await db.query(
+        `SELECT room_quota FROM interview_exam_schedule WHERE schedule_id = ?`,
+        [schedule_id]
+      );
+
+      if (!schedule) {
+        socket.emit("update_schedule_result", { success: false, error: "Schedule not found." });
+        return;
+      }
+
+      // 🔍 2. Get current occupancy
+      const [[{ current_count }]] = await db.query(
+        `SELECT COUNT(*) AS current_count FROM interview_applicants WHERE schedule_id = ?`,
+        [schedule_id]
+      );
+
+      const availableSlots = schedule.room_quota - current_count;
+      if (availableSlots <= 0) {
+        socket.emit("update_schedule_result", {
+          success: false,
+          error: `⚠️ Schedule is already full (${schedule.room_quota} applicants).`,
+        });
+        return;
+      }
+
+      // 🔍 3. Trim applicant_numbers if more than available slots
+      const toAssign = applicant_numbers.slice(0, availableSlots);
+
+      // ✅ 4. Update only those applicants
+      const [results] = await db.query(
+        `UPDATE interview_applicants
+         SET schedule_id = ?
+         WHERE applicant_id IN (?)`,
+        [schedule_id, toAssign]
+      );
+
+      socket.emit("update_schedule_result", {
+        success: true,
+        assigned: toAssign,
+        updated: results.affectedRows,
+        skipped: applicant_numbers.length - toAssign.length
+      });
+
+      // 🔄 notify all clients
+      io.emit("schedule_updated", { schedule_id });
+    } catch (err) {
+      console.error("❌ Error updating interview schedule:", err);
+      socket.emit("update_schedule_result", { success: false, error: "Failed to update interview schedule." });
+    }
+  });
+
+  // Unassign ALL
+  socket.on("unassign_all_from_interview", async ({ schedule_id }) => {
+    try {
+      await db.query(
+        `UPDATE interview_applicants
+         SET schedule_id = NULL
+         WHERE schedule_id = ?`,
+        [schedule_id]
+      );
+      socket.emit("unassign_all_result", { success: true, message: "All applicants unassigned." });
+      io.emit("schedule_updated", { schedule_id });
+    } catch (err) {
+      console.error("❌ Error unassigning all interview applicants:", err);
+      socket.emit("unassign_all_result", { success: false, error: "Failed to unassign all applicants." });
+    }
+  });
+
+  function formatTime(timeStr) {
+    if (!timeStr) return "";
+    const [hours, minutes] = timeStr.split(":"); // ignore seconds
+    let h = parseInt(hours, 10);
+    const ampm = h >= 12 ? "PM" : "AM";
+    h = h % 12 || 12; // convert 0 -> 12
+    return `${h}:${minutes} ${ampm}`;
   }
 
+  socket.on("send_interview_emails", async ({ schedule_id, applicant_numbers }) => {
+    try {
+      if (!schedule_id || !Array.isArray(applicant_numbers) || applicant_numbers.length === 0) {
+        socket.emit("send_schedule_emails_result", { success: false, error: "Invalid data provided." });
+        return;
+      }
+
+      const [[schedule]] = await db.query(
+        `SELECT * FROM interview_exam_schedule WHERE schedule_id = ?`,
+        [schedule_id]
+      );
+
+      if (!schedule) {
+        socket.emit("send_schedule_emails_result", { success: false, error: "Schedule not found." });
+        return;
+      }
+
+      // ✅ Format times for email
+      const formattedStart = formatTime(schedule.start_time);
+      const formattedEnd = formatTime(schedule.end_time);
+
+      const [applicants] = await db.query(
+        `SELECT 
+          ia.applicant_id,
+          a.applicant_number,
+          p.person_id,
+          p.first_name,
+          p.last_name,
+          p.emailAddress
+       FROM interview_applicants ia
+       LEFT JOIN applicant_numbering_table a ON ia.applicant_id = a.applicant_number
+       LEFT JOIN person_table p ON a.person_id = p.person_id
+       WHERE ia.applicant_id IN (?)`,
+        [applicant_numbers]
+      );
+
+      for (const appl of applicants) {
+        const mailOptions = {
+          from: `"EARIST Manila" <${process.env.EMAIL_USER}>`,
+          to: appl.emailAddress,
+          subject: "Interview Schedule Assignment",
+          text: `Hello ${appl.first_name} ${appl.last_name},
+
+You have been assigned to the following Interview Schedule:
+
+📅 Day: ${schedule.day_description}
+🏫 Room: ${schedule.room_description}
+🕒 Time: ${formattedStart} - ${formattedEnd}
+🆔 Applicant No: ${appl.applicant_number}
+
+Please arrive on time and bring your requirements.
+
+📌 𝑾𝒉𝒂𝒕 𝒕𝒐 𝑩𝒓𝒊𝒏𝒈:
+- Long Blue Folder
+- Examination Permit
+- Ballpen
+👕 𝐀𝐓𝐓𝐈𝐑𝐄: 𝐒𝐭𝐫𝐢𝐜𝐭𝐥𝐲 𝐰𝐞𝐚𝐫 𝐖𝐇𝐈𝐓𝐄 𝐬𝐡𝐢𝐫𝐭 𝐚𝐧𝐝 𝐩𝐚𝐧𝐭𝐬.
+
+- EARIST Manila Admissions`,
+        };
+
+        try {
+          await transporter.sendMail(mailOptions);
+          console.log(`📧 Email sent to ${appl.emailAddress}`);
+        } catch (err) {
+          console.error(`❌ Failed to send email to ${appl.emailAddress}:`, err);
+        }
+      }
+
+      // ✅ Update both tables
+      await db.query(
+        `UPDATE interview_applicants 
+       SET email_sent = 1 
+       WHERE applicant_id IN (?)`,
+        [applicant_numbers]
+      );
+
+      await db.query(
+        `UPDATE person_status_table 
+       SET interview_status = 1
+       WHERE applicant_id IN (?)`,
+        [applicant_numbers]
+      );
+
+      socket.emit("send_schedule_emails_result", { success: true, message: "Emails sent successfully." });
+      io.emit("schedule_updated", { schedule_id });
+    } catch (err) {
+      console.error("❌ Error sending interview emails:", err);
+      socket.emit("send_schedule_emails_result", { success: false, error: "Failed to send emails." });
+    }
+  });
+});
+
+
+// ================== INSERT EXAM SCHEDULE ==================
+app.post("/insert_exam_schedule", async (req, res) => {
   try {
-    // 🔎 Check for conflicts in the same day + room + room_no
-    const [conflict] = await db.query(
+    const {
+      day_description,
+      building_description,
+      room_description,
+      start_time,
+      end_time,
+      proctor,
+      room_quota,
+    } = req.body;
+
+    // 🔍 1. Check for conflicts
+    const [conflicts] = await db.query(
       `SELECT * 
-       FROM entrance_exam_schedule
+       FROM entrance_exam_schedule 
        WHERE day_description = ?
+         AND building_description = ?
          AND room_description = ?
-         AND room_no = ?
-         AND NOT (end_time <= ? OR start_time >= ?)`,
-      [day_description.trim(), room_description.trim(), room_no.trim(), start_time, end_time]
+         AND (
+              (start_time < ? AND end_time > ?) OR   -- new start inside existing
+              (start_time < ? AND end_time > ?) OR   -- new end inside existing
+              (start_time >= ? AND end_time <= ?)    -- fully overlaps
+         )`,
+      [
+        day_description,
+        building_description,
+        room_description,
+        end_time, start_time,
+        end_time, start_time,
+        start_time, end_time,
+      ]
     );
 
-    if (conflict.length > 0) {
-      return res.status(400).json({
-        error: "Conflict: Another schedule already exists in this room/room_no with overlapping time.",
-      });
+    if (conflicts.length > 0) {
+      return res.status(400).json({ error: "⚠️ Conflict: Room is already booked at this time." });
     }
 
-    // ✅ If no conflict, insert the schedule
+    // ✅ 2. Insert if no conflict
     await db.query(
       `INSERT INTO entrance_exam_schedule 
-         (day_description, room_description, room_no, start_time, end_time, proctor, room_quota)
+         (day_description, building_description, room_description, start_time, end_time, proctor, room_quota) 
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [day_description.trim(), room_description.trim(), room_no.trim(), start_time, end_time, proctor, room_quota]
+      [day_description, building_description, room_description, start_time, end_time, proctor, room_quota]
     );
 
-    res.status(200).json({ message: "Schedule saved successfully" });
+    res.json({ success: true, message: "Exam schedule saved successfully ✅" });
   } catch (err) {
-    console.error("Error saving schedule:", err);
-    res.status(500).json({ error: "Database error" });
+    console.error("❌ Error inserting exam schedule:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// ================== INSERT INTERVIEW SCHEDULE ==================
+app.post("/insert_interview_schedule", async (req, res) => {
+  try {
+    const {
+      day_description,
+      building_description,
+      room_description,
+      start_time,
+      end_time,
+      interviewer,
+      room_quota,
+    } = req.body;
+
+    // 🔍 Conflict check
+    const [conflicts] = await db.query(
+      `SELECT * 
+       FROM interview_exam_schedule 
+       WHERE day_description = ?
+         AND building_description = ?
+         AND room_description = ?
+         AND (
+              (start_time < ? AND end_time > ?) OR
+              (start_time < ? AND end_time > ?) OR
+              (start_time >= ? AND end_time <= ?)
+         )`,
+      [
+        day_description,
+        building_description,
+        room_description,
+        end_time, start_time,
+        end_time, start_time,
+        start_time, end_time,
+      ]
+    );
+
+    if (conflicts.length > 0) {
+      return res.status(400).json({ error: "⚠️ Conflict: Room is already booked at this time." });
+    }
+
+    // ✅ Insert if no conflict
+    await db.query(
+      `INSERT INTO interview_exam_schedule 
+         (day_description, building_description, room_description, start_time, end_time, interviewer, room_quota) 
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [day_description, building_description, room_description, start_time, end_time, interviewer, room_quota]
+    );
+
+    res.json({ success: true, message: "Interview schedule saved successfully ✅" });
+  } catch (err) {
+    console.error("❌ Error inserting interview schedule:", err);
+    res.status(500).json({ error: "Server error" });
   }
 });
 
@@ -3928,8 +4399,8 @@ app.get("/exam_schedules", async (req, res) => {
       SELECT 
         s.schedule_id,
         s.day_description,
+        s.building_description,
         s.room_description,
-        s.room_no,
         s.start_time,
         s.end_time,
         s.proctor,
@@ -4034,9 +4505,16 @@ io.on("connection", (socket) => {
     }
   });
 
-  // === SEND SCHEDULE EMAILS ===
-  // === SEND SCHEDULE EMAILS (batch-safe version) ===
-  // === SEND SCHEDULE EMAILS (batch-safe + DB sync) ===
+  // ✅ Helper to format MySQL TIME (HH:MM:SS) → 12-hour format with AM/PM
+  function formatTime(timeStr) {
+    if (!timeStr) return "";
+    const [hours, minutes] = timeStr.split(":"); // ignore seconds
+    let h = parseInt(hours, 10);
+    const ampm = h >= 12 ? "PM" : "AM";
+    h = h % 12 || 12; // convert 0 -> 12
+    return `${h}:${minutes} ${ampm}`;
+  }
+
   socket.on("send_schedule_emails", async ({ schedule_id }) => {
     try {
       const [rows] = await db.query(
@@ -4084,6 +4562,10 @@ io.on("connection", (socket) => {
           return;
         }
 
+        // ✅ Format start & end times
+        const formattedStart = formatTime(row.start_time);
+        const formattedEnd = formatTime(row.end_time);
+
         const mailOptions = {
           from: `"EARIST Manila" <${process.env.EMAIL_USER}>`,
           to: row.emailAddress,
@@ -4094,7 +4576,7 @@ You have been assigned to the following entrance exam schedule:
 
 📅 Day: ${row.day_description}
 🏫 Room: ${row.room_description}
-🕒 Time: ${row.start_time} - ${row.end_time}
+🕒 Time: ${formattedStart} - ${formattedEnd}
 🆔 Applicant No: ${row.applicant_number}
 
 Please arrive on time and bring your requirements.
@@ -4159,6 +4641,7 @@ Please arrive on time and bring your requirements.
       });
     }
   });
+
 
 });
 
@@ -4225,17 +4708,19 @@ app.get("/exam_schedules_with_count", async (req, res) => {
       SELECT 
         s.schedule_id,
         s.day_description,
+        s.building_description,
         s.room_description,
         s.start_time,
         s.end_time,
         s.proctor,
         s.room_quota,
+        s.created_at,   -- add this line
         COUNT(ea.applicant_id) AS current_occupancy
       FROM entrance_exam_schedule s
       LEFT JOIN exam_applicants ea
         ON s.schedule_id = ea.schedule_id
       GROUP BY s.schedule_id
-      ORDER BY s.schedule_id DESC
+      ORDER BY s.created_at DESC   -- sort by newest timestamp
     `);
     res.json(rows);
   } catch (err) {
@@ -4812,26 +5297,39 @@ app.put("/school_years/:id", async (req, res) => {
 
 // ROOM CREATION (UPDATED!)
 app.post("/room", async (req, res) => {
-  const { room_name } = req.body;
+  const { building_name, room_name } = req.body;
+
+  if (!building_name || !room_name) {
+    return res.status(400).send({ message: "Room name and building name are required" });
+  }
 
   try {
-    const insertQuery = "INSERT INTO room_table (room_description) VALUES (?)";
-    const [result] = await db3.query(insertQuery, [room_name]);
-    res.status(200).send({ message: "Room Successfully Created", result });
+    const insertQuery = `
+      INSERT INTO room_table (building_description, room_description) 
+      VALUES (?, ?)
+    `;
+    const [result] = await db3.query(insertQuery, [building_name, room_name]);
+
+    res.status(200).send({
+      message: "Room Successfully Created",
+      result
+    });
   } catch (error) {
-    console.error(error);
+    console.error("Error inserting room:", error);
     res.status(500).send(error);
   }
 });
 
+
 app.get("/room_list", async (req, res) => {
   try {
-    const getQuery = "SELECT * FROM room_table";
-    const [result] = await db3.query(getQuery);
-    res.status(200).send(result);
+    const [results] = await db3.query(
+      "SELECT room_id, building_description, room_description FROM room_table ORDER BY room_description ASC"
+    );
+    res.json(results);
   } catch (err) {
-    console.error(err);
-    res.status(500).send(err);
+    console.error("Error fetching rooms:", err);
+    res.status(500).json({ error: "Database error" });
   }
 });
 
@@ -7425,10 +7923,10 @@ app.get("/api/student/faculty_evaluation/answer/:course_id/:prof_id/:curriculum_
 );
 
 app.get("/api/get/all_schedule/:roomID", async (req, res) => {
-  const { roomID} = req.params;
+  const { roomID } = req.params;
   console.log("RoomID:", roomID);
 
-  try{
+  try {
     const scheduleQuery = `
       SELECT 
         tt.room_day, 
@@ -7510,6 +8008,99 @@ app.get("/program_list/:dprtmnt_id", async (req, res) => {
     console.error(error);
     res.status(500).send(error);
   }
+});
+
+// server.js (add or replace existing person_with_applicant route)
+app.get('/api/person_with_applicant/:person_id', (req, res) => {
+  const personId = req.params.person_id;
+  const sql = `
+    SELECT 
+      p.*,
+      an.applicant_number,
+      ps.qualifying_result   AS qualifying_exam_score,
+      ps.interview_result    AS qualifying_interview_score,
+      ps.exam_result         AS exam_score
+    FROM person_table p
+    LEFT JOIN applicant_numbering_table an ON an.person_id = p.person_id
+    LEFT JOIN person_status_table ps ON ps.person_id = p.person_id
+    WHERE p.person_id = ?
+    LIMIT 1
+  `;
+  db.query(sql, [personId], (err, results) => {
+    if (err) {
+      console.error('person_with_applicant SQL error:', err);
+      return res.status(500).json({ error: err.message });
+    }
+    if (!results[0]) return res.status(404).json({ error: 'Person not found' });
+    res.json(results[0]);
+  });
+});
+
+// server.js - required route (example)
+app.get('/api/person_with_applicant/:person_id', (req, res) => {
+  const personId = req.params.person_id;
+  const sql = `
+    SELECT 
+      p.*,
+      an.applicant_number,
+      ps.qualifying_result   AS qualifying_exam_score,
+      ps.interview_result    AS qualifying_interview_score,
+      ps.exam_result         AS exam_score
+    FROM person_table p
+    LEFT JOIN applicant_numbering_table an ON an.person_id = p.person_id
+    LEFT JOIN person_status_table ps ON ps.person_id = p.person_id
+    WHERE p.person_id = ?
+    LIMIT 1
+  `;
+  db.query(sql, [personId], (err, results) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(results[0] || null);
+  });
+});
+
+// server.js
+app.get('/api/person_with_applicant/:id', (req, res) => {
+  const id = req.params.id;
+
+  const sql = `
+    SELECT 
+      p.*,
+      an.applicant_number,
+      ps.qualifying_result   AS qualifying_exam_score,
+      ps.interview_result    AS qualifying_interview_score,
+      ps.exam_result         AS exam_score
+    FROM person_table p
+    LEFT JOIN applicant_numbering_table an ON an.person_id = p.person_id
+    LEFT JOIN person_status_table ps ON ps.person_id = p.person_id
+    WHERE p.person_id = ? OR an.applicant_number = ?
+    LIMIT 1
+  `;
+
+  // bind the same param twice so the endpoint accepts either numeric person_id or applicant_number
+  db.query(sql, [id, id], (err, results) => {
+    if (err) {
+      console.error('person_with_applicant SQL error:', err);
+      return res.status(500).json({ error: err.message });
+    }
+    if (!results[0]) return res.status(404).json({ error: 'Person not found' });
+    res.json(results[0]);
+  });
+});
+
+// server.js
+app.get('/api/person_status_by_applicant/:applicant_number', (req, res) => {
+  const applicantNumber = req.params.applicant_number;
+  const sql = `
+    SELECT ps.*
+    FROM person_status_table ps
+    JOIN applicant_numbering_table an ON an.person_id = ps.person_id
+    WHERE an.applicant_number = ?
+    LIMIT 1
+  `;
+  db.query(sql, [applicantNumber], (err, results) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(results[0] || null);
+  });
 });
 
 

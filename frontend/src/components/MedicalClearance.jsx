@@ -44,6 +44,7 @@ const tabs = [
     { label: "Student Numbering", to: "/student_numbering", icon: <HowToRegIcon /> },
 ];
 
+
 const remarksOptions = [
     "75% OF ATTENDANCE IS NEEDED FOR TRANSFEREE",
     "Attachments were blurry",
@@ -203,7 +204,6 @@ const MedicalClearance = () => {
             }
         }
     }, [uploads]);
-
 
 
     useEffect(() => {
@@ -388,12 +388,13 @@ const MedicalClearance = () => {
     };
 
     const handleStatusChange = async (uploadId, remarkValue) => {
-        const remarks = remarksMap[uploadId] || ""; // get remarks for this upload ID
+        const remarks = remarksMap[uploadId] || "";
 
         try {
             await axios.put(`http://localhost:5000/uploads/remarks/${uploadId}`, {
-                status: remarkValue,   // keep it as number now
-                remarks: remarks,
+                status: remarkValue,
+                remarks,
+                user_id: userID,   // 👈 add this
             });
 
             if (selectedPerson?.applicant_number) {
@@ -407,22 +408,29 @@ const MedicalClearance = () => {
 
 
     const handleUploadSubmit = async () => {
-        if (!selectedPerson?.person_id || !selectedFiles.file) {
-            alert("Please select a file and applicant first.");
+        if (!selectedFiles.requirements_id || !selectedPerson?.person_id) {
+            alert("Please select a document type.");
+            return;
+        }
+
+        // If remarks is chosen but no file selected
+        if (selectedFiles.remarks && !selectedFiles.file) {
+            alert("Please select a file for the chosen remarks.");
             return;
         }
 
         try {
             const formData = new FormData();
-            formData.append("file", selectedFiles.file);
+            if (selectedFiles.file) formData.append("file", selectedFiles.file);
+            formData.append("requirements_id", selectedFiles.requirements_id);
             formData.append("person_id", selectedPerson.person_id);
             formData.append("remarks", selectedFiles.remarks || "");
 
-            await axios.post("http://localhost:5000/api/upload/vaccine", formData, {
+            await axios.post("http://localhost:5000/api/upload", formData, {
                 headers: { "Content-Type": "multipart/form-data" },
             });
 
-            alert("✅ Vaccine Card uploaded successfully!");
+            alert("✅ Upload successful!");
             setSelectedFiles({});
             if (selectedPerson?.applicant_number) {
                 fetchUploadsByApplicantNumber(selectedPerson.applicant_number);
@@ -460,8 +468,8 @@ const MedicalClearance = () => {
         setPerson((prev) => ({ ...prev, [name]: value }));
 
         if (name === "document_status") {
-            const value = e.target.value || "On process"; // default if empty
-            setPerson((prev) => ({ ...prev, document_status: value }));
+            const newValue = value || "On process"; // default if empty
+            setPerson((prev) => ({ ...prev, document_status: newValue }));
 
             if (uploads.length === 0) return;
 
@@ -469,13 +477,16 @@ const MedicalClearance = () => {
                 await Promise.all(
                     uploads.map((upload) =>
                         axios.put(`http://localhost:5000/uploads/document-status/${upload.upload_id}`, {
-                            document_status: value,
+                            document_status: newValue,
+                            user_id: userID,
                         })
                     )
                 );
 
-                // 🔹 Emit a socket event so ApplicantList can refresh instantly
-                socket.emit("document_status_updated");
+                // 🔹 Emit socket event using a ref (not redefined every render)
+                if (socketRef.current) {
+                    socketRef.current.emit("document_status_updated");
+                }
 
                 if (selectedPerson?.applicant_number) {
                     await fetchUploadsByApplicantNumber(selectedPerson.applicant_number);
@@ -484,10 +495,7 @@ const MedicalClearance = () => {
                 console.error("❌ Failed to update document statuses:", err);
             }
         }
-
-
     };
-
 
 
 
@@ -507,55 +515,50 @@ const MedicalClearance = () => {
         const [newRemarkMode, setNewRemarkMode] = useState({}); // { [upload_id]: true|false }
 
         const handleSaveRemarks = async (uploadId) => {
-            const newRemark = (remarksMap[uploadId] ?? "").trim();
-            if (!newRemark || newRemark === "__NEW__" || newRemark === "New Remarks") {
-                // do not save the trigger/empty
-                setEditingRemarkId(null);
-                setNewRemarkMode((prev) => ({ ...prev, [uploadId]: false }));
-                return;
-            }
+            const newRemark = remarksMap[uploadId];
 
             try {
                 await axios.put(`http://localhost:5000/uploads/remarks/${uploadId}`, {
                     remarks: newRemark,
                     status: uploads.find((u) => u.upload_id === uploadId)?.status || "0",
+                    user_id: userID,   // 👈 add this
                 });
 
                 if (selectedPerson?.applicant_number) {
                     await fetchUploadsByApplicantNumber(selectedPerson.applicant_number);
                 }
+
+                setTimeout(() => {
+                    setEditingRemarkId(null);
+                }, 100);
             } catch (err) {
                 console.error("Failed to save remarks:", err);
-            } finally {
-                setEditingRemarkId(null);
-                setNewRemarkMode((prev) => ({ ...prev, [uploadId]: false }));
             }
         };
 
-         // 🔒 Disable right-click
-  document.addEventListener('contextmenu', (e) => e.preventDefault());
+        // 🔒 Disable right-click
+        document.addEventListener('contextmenu', (e) => e.preventDefault());
 
-  // 🔒 Block DevTools shortcuts + Ctrl+P silently
-  document.addEventListener('keydown', (e) => {
-    const isBlockedKey =
-      e.key === 'F12' || // DevTools
-      e.key === 'F11' || // Fullscreen
-      (e.ctrlKey && e.shiftKey && (e.key.toLowerCase() === 'i' || e.key.toLowerCase() === 'j')) || // Ctrl+Shift+I/J
-      (e.ctrlKey && e.key.toLowerCase() === 'u') || // Ctrl+U (View Source)
-      (e.ctrlKey && e.key.toLowerCase() === 'p');   // Ctrl+P (Print)
+        // 🔒 Block DevTools shortcuts + Ctrl+P silently
+        document.addEventListener('keydown', (e) => {
+            const isBlockedKey =
+                e.key === 'F12' || // DevTools
+                e.key === 'F11' || // Fullscreen
+                (e.ctrlKey && e.shiftKey && (e.key.toLowerCase() === 'i' || e.key.toLowerCase() === 'j')) || // Ctrl+Shift+I/J
+                (e.ctrlKey && e.key.toLowerCase() === 'u') || // Ctrl+U (View Source)
+                (e.ctrlKey && e.key.toLowerCase() === 'p');   // Ctrl+P (Print)
 
-    if (isBlockedKey) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-  });
+            if (isBlockedKey) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+        });
 
 
 
         return (
             <TableRow key={doc.key}>
                 <TableCell sx={{ fontWeight: 'bold', width: '20%', border: "1px solid maroon" }}>{doc.label}</TableCell>
-
                 <TableCell sx={{ width: '20%', border: "1px solid maroon" }}>
                     {editingRemarkId === uploaded?.upload_id ? (
                         newRemarkMode[uploaded.upload_id] ? (
@@ -969,7 +972,7 @@ const MedicalClearance = () => {
                                 >
                                     <MenuItem value=""><em>Select Document Status</em></MenuItem>
                                     <MenuItem value="On process">On process</MenuItem>
-                                    <MenuItem value="Documents Verified & ECAT">Documents Verified & ECAT</MenuItem>
+                                    <MenuItem value="Documents Verified">Documents Verified</MenuItem>
                                     <MenuItem value="Disapproved">Disapproved</MenuItem>
                                     <MenuItem value="Program Closed">Program Closed</MenuItem>
                                 </TextField>
@@ -1037,6 +1040,7 @@ const MedicalClearance = () => {
                                         ))}
                                     </TextField>
                                 </Box>
+
 
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, marginLeft: "-25px" }}>
                                     <Typography sx={{ fontSize: "14px", fontFamily: "Arial Black", width: "100px", textAlign: "center" }}>

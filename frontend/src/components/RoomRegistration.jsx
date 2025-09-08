@@ -16,6 +16,7 @@ import {
 
 const RoomRegistration = () => {
   const [roomName, setRoomName] = useState("");
+  const [buildingName, setBuildingName] = useState("");
   const [roomList, setRoomList] = useState([]);
 
   useEffect(() => {
@@ -32,18 +33,23 @@ const RoomRegistration = () => {
   };
 
   const handleAddRoom = async () => {
-    if (!roomName.trim()) return alert("Room name is required");
+    if (!roomName.trim() || !buildingName.trim())
+      return alert("Room name and building name are required");
 
     try {
-      await axios.post("http://localhost:5000/room", { room_name: roomName });
+      await axios.post("http://localhost:5000/room", {
+        room_name: roomName,
+        building_name: buildingName
+      });
       setRoomName("");
+      setBuildingName("");
       fetchRoomList();
     } catch (err) {
       console.error("Error adding room:", err);
     }
   };
 
-   // 🔒 Disable right-click
+  // 🔒 Disable right-click
   document.addEventListener('contextmenu', (e) => e.preventDefault());
 
   // 🔒 Block DevTools shortcuts + Ctrl+P silently
@@ -77,15 +83,29 @@ const RoomRegistration = () => {
       <Grid container spacing={4}>
         {/* Form Section */}
         <Grid item xs={12} md={5}>
-          <Paper elevation={3} sx={{ p: 3,  }}>
-            <Typography variant="h6" sx={{ mb: 2, color: "#000000", }}>
+          <Paper elevation={3} sx={{ p: 3, }}>
+            <Typography variant="h6" sx={{ mb: 2, color: "#800000", }}>
               Register New Room
             </Typography>
+            <Typography fontWeight={500}>
+              Building Name:
+            </Typography>
+            <TextField
+              fullWidth
+              label="Building Name"
+              variant="outlined"
+              value={buildingName}
+              onChange={(e) => setBuildingName(e.target.value)}
+              sx={{ mb: 2 }}
+            />
 
+            <Typography fontWeight={500}>
+              Room Name:
+            </Typography>
             <TextField
               fullWidth
               label="Room Name"
-              
+
               variant="outlined"
               value={roomName}
               onChange={(e) => setRoomName(e.target.value)}
@@ -109,7 +129,7 @@ const RoomRegistration = () => {
         {/* Room List Section */}
         <Grid item xs={12} md={7}>
           <Paper elevation={3} sx={{ p: 3 }}>
-            <Typography variant="h6" sx={{ mb: 2, color: "#000000" }}>
+            <Typography variant="h6" sx={{ mb: 2, color: "#800000" }}>
               Registered Rooms
             </Typography>
 
@@ -118,17 +138,22 @@ const RoomRegistration = () => {
                 <TableHead>
                   <TableRow>
                     <TableCell sx={{ fontWeight: "bold" }}>Room ID</TableCell>
+                    <TableCell sx={{ fontWeight: "bold" }}>Building</TableCell>
                     <TableCell sx={{ fontWeight: "bold" }}>Room Name</TableCell>
+
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {roomList.map((room, index) => (
                     <TableRow key={index}>
                       <TableCell>{room.room_id}</TableCell>
+                      <TableCell>{room.building_description || "N/A"}</TableCell>
                       <TableCell>{room.room_description}</TableCell>
+
                     </TableRow>
                   ))}
                 </TableBody>
+
               </Table>
             </Box>
           </Paper>

@@ -115,6 +115,10 @@ import StudentGradingPage from './components/StudentGrade';
 import StudentFacultyEvaluation from './components/StudentFacultyEval';
 import CertificateOfRegistration from './components/CertificateOfRegistration';
 
+import InterviewerApplicantList from './components/InterviewerApplicantList';
+import AssignInterviewExam from './components/AssignInterviewExam';
+import AssignScheduleToApplicantsInterviewer from './components/AssignScheduleToApplicantsInterviewer';
+
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
@@ -216,6 +220,11 @@ function App() {
               <Route path="/assign_schedule_applicant" element={<ProtectedRoute><AssignScheduleToApplicants /></ProtectedRoute>} />
               <Route path="/applicant_scoring" element={<ProtectedRoute><ApplicantScoring /></ProtectedRoute>} />
 
+              <Route path="/assign_interview_exam" element={<ProtectedRoute><AssignInterviewExam /></ProtectedRoute>} />
+              <Route path="/assign_schedule_applicants_interview" element={<ProtectedRoute><AssignScheduleToApplicantsInterviewer /></ProtectedRoute>} />
+              <Route path="/interviewer_applicant_list" element={<ProtectedRoute><InterviewerApplicantList /></ProtectedRoute>} />
+
+
               <Route path="/grading_sheet" element={<ProtectedRoute><GradingSheet /></ProtectedRoute>} />
               <Route path="/faculty_workload" element={<ProtectedRoute><FacultyWorkload /></ProtectedRoute>} />
               <Route path="/faculty_masterlist" element={<ProtectedRoute><FacultyMasterList /></ProtectedRoute>} />
@@ -226,7 +235,7 @@ function App() {
               <Route path="/student_dashboard" element={<ProtectedRoute allowedRoles={'student'}><StudentDashboard /></ProtectedRoute>} />
               <Route path="/student_schedule" element={<ProtectedRoute allowedRoles={'student'}><StudentSchedule /></ProtectedRoute>} />
               <Route path="/grades_page" element={<ProtectedRoute><StudentGradingPage allowedRoles={'student'} /></ProtectedRoute>} />
-              <Route path="/student_faculty_evaluation" element={<ProtectedRoute allowedRoles={'student'}><StudentFacultyEvaluation /></ProtectedRoute>}/>              
+              <Route path="/student_faculty_evaluation" element={<ProtectedRoute allowedRoles={'student'}><StudentFacultyEvaluation /></ProtectedRoute>} />
 
               <Route path="/unauthorized" element={<Unauthorized />} />
 
@@ -234,7 +243,7 @@ function App() {
               <Route path="/applicant_list_admin" element={<ProtectedRoute><ApplicantListAdmin /></ProtectedRoute>} />
               <Route path="/proctor_applicant_list" element={<ProtectedRoute><ProctorApplicantList /></ProtectedRoute>} />
               <Route path="/medical_clearance" element={<ProtectedRoute><MedicalClearance /></ProtectedRoute>} />
-           
+
               <Route path="/qualifying_exam_scores" element={<ProtectedRoute><QualifyingExamScore /></ProtectedRoute>} />
               <Route path="/college_approval" element={<ProtectedRoute><CollegeApproval /></ProtectedRoute>} />
 
@@ -377,7 +386,7 @@ function App() {
               <Route path="/class_list/css/:curriculum_id/:dstID/:courseID/:professorID" element={<ProtectedRoute><StudentList /></ProtectedRoute>} />
 
 
-        
+
             </Routes>
           </main>
         </div>

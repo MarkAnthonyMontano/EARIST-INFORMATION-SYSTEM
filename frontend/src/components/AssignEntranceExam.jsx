@@ -7,8 +7,8 @@ import { useNavigate } from "react-router-dom";
 
 const AssignEntranceExam = () => {
   const tabs = [
-    { label: "Room Scheduling", to: "/assign_entrance_exam" },
-    { label: "Applicant's Scheduling", to: "/assign_schedule_applicant" },
+    { label: "Entrance Exam Room Assignment", to: "/assign_entrance_exam" },
+    { label: "Entrance Exam Schedule Management", to: "/assign_schedule_applicant" },
     { label: "Examination Profile", to: "/examination_profile" },
     { label: "Proctor's Applicant List", to: "/proctor_applicant_list" },
   ];
@@ -33,6 +33,9 @@ const AssignEntranceExam = () => {
   const [roomQuota, setRoomQuota] = useState("");
   const [proctor, setProctor] = useState("");
   const [roomNo, setRoomNo] = useState("");
+  const [roomName, setRoomName] = useState("");
+  const [buildingName, setBuildingName] = useState("");
+
 
 
 
@@ -40,7 +43,7 @@ const AssignEntranceExam = () => {
     const fetchRooms = async () => {
       try {
         const res = await axios.get("http://localhost:5000/room_list");
-        // expect res.data = [{ room_id: 1, room_description: "Room A" }, ...]
+
         setRooms(res.data);
       } catch (err) {
         console.error("Error fetching rooms:", err);
@@ -71,71 +74,46 @@ const AssignEntranceExam = () => {
 
     const sel = rooms.find((r) => String(r.room_id) === String(roomId));
     if (!sel) {
-      setMessage("Please select a valid room.");
-      return;
-    }
-
-    // 🔎 Check conflict
-    const conflict = schedules.some(s =>
-      s.day_description === day &&
-      s.room_description === sel.room_description &&
-      !(
-        endTime <= s.start_time || startTime >= s.end_time // no overlap
-      )
-    );
-
-    if (conflict) {
-      setMessage("Conflict detected: This room is already booked for that time.");
+      setMessage("Please select a valid building and room.");
       return;
     }
 
     try {
       await axios.post("http://localhost:5000/insert_exam_schedule", {
         day_description: day,
+        building_description: sel.building_description,
         room_description: sel.room_description,
-        room_no: roomNo,
         start_time: startTime,
         end_time: endTime,
         proctor,
         room_quota: roomQuota || 40,
       });
 
-      setMessage("Entrance exam schedule saved successfully.");
+      // ✅ Success
+      setMessage("Entrance Exam schedule saved successfully ✅");
       setDay("");
       setRoomId("");
+      setRoomName("");
       setStartTime("");
       setEndTime("");
       setProctor("");
       setRoomQuota("");
 
-      // refresh schedules so conflicts update
+      // 🔄 Refresh schedules so conflicts and occupancy counts update
       const res = await axios.get("http://localhost:5000/exam_schedules_with_count");
       setSchedules(res.data);
 
     } catch (err) {
       console.error("Error saving schedule:", err);
-      setMessage("Failed to save schedule.");
+
+      if (err.response && err.response.data && err.response.data.error) {
+        // Show backend error (like conflict)
+        setMessage(err.response.data.error);
+      } else {
+        setMessage("Failed to save schedule ❌");
+      }
     }
   };
-
-   // 🔒 Disable right-click
-  document.addEventListener('contextmenu', (e) => e.preventDefault());
-
-  // 🔒 Block DevTools shortcuts + Ctrl+P silently
-  document.addEventListener('keydown', (e) => {
-    const isBlockedKey =
-      e.key === 'F12' || // DevTools
-      e.key === 'F11' || // Fullscreen
-      (e.ctrlKey && e.shiftKey && (e.key.toLowerCase() === 'i' || e.key.toLowerCase() === 'j')) || // Ctrl+Shift+I/J
-      (e.ctrlKey && e.key.toLowerCase() === 'u') || // Ctrl+U (View Source)
-      (e.ctrlKey && e.key.toLowerCase() === 'p');   // Ctrl+P (Print)
-
-    if (isBlockedKey) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-  });
-
 
 
   return (
@@ -160,7 +138,7 @@ const AssignEntranceExam = () => {
             fontSize: '36px',
           }}
         >
-          ROOM SCHEDULING
+          ENTRANCE EXAM ROOM ASSIGNMENT
         </Typography>
 
 
@@ -242,7 +220,7 @@ const AssignEntranceExam = () => {
               {/* Day */}
               <Grid item xs={12}>
                 <Typography fontWeight={500}>
-                  Day
+                  Day:
                 </Typography>
                 <TextField
                   select
@@ -262,50 +240,57 @@ const AssignEntranceExam = () => {
                 </TextField>
               </Grid>
 
-              {/* Room */}
+              {/* Building */}
               <Grid item xs={12}>
-                <Typography fontWeight={500}>
-                  Building
-                </Typography>
+                <Typography fontWeight={500}>Building:</Typography>
                 <TextField
                   select
                   fullWidth
-                  value={roomId}
-                  onChange={(e) => setRoomId(e.target.value)}
-                  required
+                  label="Select Building"
                   variant="outlined"
-                >
-                  {Array.isArray(rooms) && rooms.length > 0 ? (
-                    rooms.map((r) => (
-                      <MenuItem key={r.room_id} value={r.room_id}>
-                        {r.room_description}
-                      </MenuItem>
-                    ))
-                  ) : (
-                    <MenuItem disabled>No rooms available</MenuItem>
-                  )}
+                  value={buildingName}
+                  onChange={(e) => setBuildingName(e.target.value)}
 
+                >
+                  {[...new Set(
+                    rooms
+                      .map(r => r.building_description)
+                      .filter(b => b && b.trim() !== "") // ✅ remove NULL and empty strings
+                  )].map((b, i) => (
+                    <MenuItem key={i} value={b}>{b}</MenuItem>
+                  ))}
                 </TextField>
               </Grid>
 
+
+              {/* Room */}
               <Grid item xs={12}>
-                <Typography fontWeight={500}>
-                  Room No.:
-                </Typography>
+                <Typography fontWeight={500}>Room:</Typography>
                 <TextField
+                  select
                   fullWidth
-                  value={roomNo}
-                  onChange={(e) => setRoomNo(e.target.value)}
-                  required
+                  label="Select Room"
                   variant="outlined"
-                  placeholder="Enter Room Number"
-                />
+                  value={roomId}
+                  onChange={(e) => setRoomId(e.target.value)}   // store room_id
+
+                >
+                  {rooms
+                    .filter(r => r.building_description === buildingName || !buildingName)
+                    .map(room => (
+                      <MenuItem key={room.room_id} value={room.room_id}>
+                        {room.room_description}
+                      </MenuItem>
+                    ))}
+                </TextField>
               </Grid>
+
+
 
 
               {/* Start Time */}
               <Grid item xs={12}>
-                <Typography fontWeight={500}>Start Time</Typography>
+                <Typography fontWeight={500}>Start Time:</Typography>
                 <TextField
                   fullWidth
                   type="time"
@@ -319,7 +304,7 @@ const AssignEntranceExam = () => {
 
               {/* End Time */}
               <Grid item xs={12}>
-                <Typography fontWeight={500}>End Time</Typography>
+                <Typography fontWeight={500}>End Time:</Typography>
                 <TextField
                   fullWidth
                   type="time"
@@ -335,7 +320,7 @@ const AssignEntranceExam = () => {
               {/* Proctor */}
               <Grid item xs={12}>
                 <Typography fontWeight={500}>
-                  Proctor
+                  Proctor:
                 </Typography>
                 <TextField
                   fullWidth
@@ -343,7 +328,7 @@ const AssignEntranceExam = () => {
                   onChange={(e) => setProctor(e.target.value)}
                   required
                   variant="outlined"
-                  placeholder="Enter proctor name"
+                  placeholder="Enter Proctor Name"
                 />
               </Grid>
 

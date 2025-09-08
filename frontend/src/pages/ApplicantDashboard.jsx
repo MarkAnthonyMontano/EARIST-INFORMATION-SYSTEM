@@ -55,19 +55,53 @@ const ApplicantDashboard = () => {
     }
   }, []);
 
-  const fetchProctorSchedule = async (id) => {
-    if (!id) return; // 🔒 safeguard
+  const [medicalUploads, setMedicalUploads] = useState([]);
+
+  const fetchMedicalUploads = async (personId) => {
     try {
-      const { data } = await axios.get(
-        `http://localhost:5000/api/applicant-schedule/${id}`
+      const res = await axios.get(`http://localhost:5000/uploads`, {
+        headers: { "x-person-id": personId },
+      });
+
+      // ✅ Only get vaccine/medical related uploads
+      const medicalDocs = res.data.filter(u =>
+        u.original_name?.toLowerCase().includes("vaccine") ||
+        u.description?.toLowerCase().includes("vaccine") ||
+        u.requirements_id === 5 // if 5 = VaccineCard in your DB
       );
-      console.log("✅ Schedule fetched:", data);
+
+      setMedicalUploads(medicalDocs);
+    } catch (err) {
+      console.error("❌ Failed to fetch medical uploads:", err);
+    }
+  };
+
+  useEffect(() => {
+    const id = localStorage.getItem("person_id");
+    if (id) {
+      checkRequirements(id);
+      fetchMedicalUploads(id); // 👈 fetch medical documents
+    }
+  }, []);
+
+  // add these alongside your other useState declarations
+  const [qualifyingExamScore, setQualifyingExamScore] = useState(null);
+  const [qualifyingInterviewScore, setQualifyingInterviewScore] = useState(null);
+  const [examScore, setExamScore] = useState(null);
+
+
+  const fetchProctorSchedule = async (applicantNumber) => {
+    if (!applicantNumber) return console.warn("fetchProctorSchedule missing applicantNumber");
+    try {
+      const { data } = await axios.get(`http://localhost:5000/api/applicant-schedule/${applicantNumber}`);
+      console.info("applicant-schedule response for", applicantNumber, data);
       setProctor(data);
     } catch (err) {
       console.error("Error fetching schedule:", err);
       setProctor(null);
     }
   };
+
 
   const [requirementsCompleted, setRequirementsCompleted] = useState(
     localStorage.getItem("requirementsCompleted") === "1"
@@ -144,17 +178,60 @@ const ApplicantDashboard = () => {
   };
 
   const fetchPersonData = async (id) => {
+    if (!id) return console.warn("fetchPersonData called with empty id");
+
     try {
+      console.info("fetchPersonData -> requesting person_with_applicant for id:", id);
       const res = await axios.get(`http://localhost:5000/api/person_with_applicant/${id}`);
-      setPerson(res.data); // includes document_status + applicant_number
-      if (res.data.applicant_number) {
-        setApplicantID(res.data.applicant_number);
-        fetchProctorSchedule(res.data.applicant_number);
+      console.info("person_with_applicant response:", res.data);
+      setPerson(res.data || {});
+
+      const applicantNumber = res.data?.applicant_number ?? res.data?.applicantNumber ?? null;
+      if (applicantNumber) {
+        setApplicantID(applicantNumber);
+        try {
+          const sched = await axios.get(`http://localhost:5000/api/applicant-schedule/${applicantNumber}`);
+          console.info("applicant-schedule:", sched.data);
+          setProctor(sched.data);
+        } catch (e) {
+          console.warn("applicant-schedule fetch failed:", e?.response?.data || e.message);
+          setProctor(null);
+        }
+      } else {
+        console.warn("No applicant_number in person_with_applicant response for id", id);
       }
-    } catch (error) {
-      console.error("Failed to fetch person_with_applicant:", error);
+
+      // map many possible field names
+      let qExam = res.data?.qualifying_exam_score ?? res.data?.qualifying_result ?? res.data?.exam_score ?? null;
+      let qInterview = res.data?.qualifying_interview_score ?? res.data?.interview_result ?? null;
+      let ex = res.data?.exam_score ?? res.data?.exam_result ?? null;
+
+
+      // fallback: fetch person_status_by_applicant if scores not present
+      if ((qExam === null && qInterview === null && ex === null) && applicantNumber) {
+        try {
+          const st = await axios.get(`http://localhost:5000/api/person_status_by_applicant/${applicantNumber}`);
+          console.info("person_status_by_applicant response:", st.data);
+          qExam = qExam ?? st.data?.qualifying_result ?? null;
+          qInterview = qInterview ?? st.data?.interview_result ?? null;
+          ex = ex ?? st.data?.exam_result ?? null;
+        } catch (err) {
+          console.warn("Fallback status endpoint failed:", err?.response?.data || err.message);
+        }
+      }
+
+      setQualifyingExamScore(qExam !== undefined ? qExam : null);
+      setQualifyingInterviewScore(qInterview !== undefined ? qInterview : null);
+      setExamScore(ex !== undefined ? ex : null);
+
+
+      console.info("final mapped scores:", { qExam, qInterview, ex });
+
+    } catch (err) {
+      console.error("fetchPersonData failed:", err?.response?.data || err.message);
     }
   };
+
 
 
   // Format start and end time
@@ -237,7 +314,7 @@ const ApplicantDashboard = () => {
               <Typography variant="subtitle2" color="text.secondary">
                 Application Status
               </Typography>
-              <Typography style={{color: "maroon", fontWeight: "bold"}} >
+              <Typography style={{ color: "maroon", fontWeight: "bold" }} >
                 {allRequirementsCompleted
                   ? "Your application is registered."
                   : "Please complete all required documents to register your application."}
@@ -247,60 +324,60 @@ const ApplicantDashboard = () => {
         </Grid>
 
         <Grid item xs={12}>
-  <Card
-    sx={{
-      borderRadius: 3,
-      marginLeft: "10px",
-      boxShadow: 3,
-      p: 2,
-      display: "flex",
-      justifyContent: "center",
-      alignItems: "center",
-    }}
-  >
-    <CardContent sx={{ textAlign: "center" }}>
-      <Typography variant="h6" gutterBottom>
-        Application Form
-      </Typography>
-      <button
-        style={{
-          padding: "10px 20px",
-          backgroundColor: "maroon",
-          color: "white",
-          border: "none",
-          borderRadius: "8px",
-          cursor: "pointer",
-          marginTop: "10px",
-        }}
-        onClick={() => {
-          // 🔑 generate random keys if not already set
-          if (!localStorage.getItem("dashboardKeys")) {
-            const generateKey = () =>
-              Math.random().toString(36).substring(2, 10);
+          <Card
+            sx={{
+              borderRadius: 3,
+              marginLeft: "10px",
+              boxShadow: 3,
+              p: 2,
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+            }}
+          >
+            <CardContent sx={{ textAlign: "center" }}>
+              <Typography variant="h6" gutterBottom>
+                Application Form
+              </Typography>
+              <button
+                style={{
+                  padding: "10px 20px",
+                  backgroundColor: "maroon",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "8px",
+                  cursor: "pointer",
+                  marginTop: "10px",
+                }}
+                onClick={() => {
+                  // 🔑 generate random keys if not already set
+                  if (!localStorage.getItem("dashboardKeys")) {
+                    const generateKey = () =>
+                      Math.random().toString(36).substring(2, 10);
 
-            const dashboardKeys = {
-              step1: generateKey(),
-              step2: generateKey(),
-              step3: generateKey(),
-              step4: generateKey(),
-              step5: generateKey(),
-            };
+                    const dashboardKeys = {
+                      step1: generateKey(),
+                      step2: generateKey(),
+                      step3: generateKey(),
+                      step4: generateKey(),
+                      step5: generateKey(),
+                    };
 
-            localStorage.setItem(
-              "dashboardKeys",
-              JSON.stringify(dashboardKeys)
-            );
-          }
+                    localStorage.setItem(
+                      "dashboardKeys",
+                      JSON.stringify(dashboardKeys)
+                    );
+                  }
 
-          const keys = JSON.parse(localStorage.getItem("dashboardKeys"));
-          window.location.href = `/dashboard/${keys.step1}`;
-        }}
-      >
-        Start Application
-      </button>
-    </CardContent>
-  </Card>
-</Grid>
+                  const keys = JSON.parse(localStorage.getItem("dashboardKeys"));
+                  window.location.href = `/dashboard/${keys.step1}`;
+                }}
+              >
+                Start Application
+              </button>
+            </CardContent>
+          </Card>
+        </Grid>
 
 
 
@@ -378,6 +455,11 @@ const ApplicantDashboard = () => {
                 Check schedule and results of your exam.
               </Typography>
 
+              <Typography variant="body2" sx={{ fontWeight: "bold", color: "maroon" }}>
+                Entrance Exam Score:
+
+              </Typography>
+
               {!proctor?.email_sent && (
                 <Typography
                   variant="body2"
@@ -413,11 +495,15 @@ const ApplicantDashboard = () => {
                     Take note: Proceed to the Examination Day Schedule. Failure to attend the examination schedule shall result in forfeiture of the application.
                   </Typography>
 
+
+
                 </>
               )}
             </CardContent>
           </Card>
         </Grid>
+
+
 
         <Grid item xs={12} md={4}>
           <Card
@@ -440,12 +526,44 @@ const ApplicantDashboard = () => {
             <CardContent sx={{ textAlign: "center" }}>
               <EventIcon sx={{ color: "maroon" }} fontSize="large" />
               <Typography variant="h6" gutterBottom sx={{ mt: 1 }}>
-                Interview Schedule / Qualifying Exam 
+                Interview Schedule / Qualifying Exam
               </Typography>
-              <Typography variant="body2" sx={{ fontWeight: "bold", color: "gray" }}>
-                Status: Pending
-              </Typography>
+
+
+
+              <Box sx={{ mt: 2 }}>
+                {(qualifyingExamScore !== null) || (qualifyingInterviewScore !== null) || (examScore !== null) ? (
+                  <>
+                    <Typography variant="body2" sx={{ fontWeight: "bold", color: "maroon" }}>
+                      Interview Exam Score: {qualifyingInterviewScore !== null ? qualifyingInterviewScore : "N/A"}
+                    </Typography>
+
+                    <Typography variant="body2" sx={{ fontWeight: "bold", color: "maroon" }}>
+                      Qualifying Exam Score: {qualifyingExamScore !== null ? qualifyingExamScore : "N/A"}
+                    </Typography>
+
+                    <Typography variant="body2" sx={{ fontWeight: "bold", color: "maroon" }}>
+                      Exam Result: {examScore !== null ? examScore : "N/A"}
+                    </Typography>
+
+                    <Typography variant="body2" sx={{ fontWeight: "bold", color: "maroon" }}>
+                      Total Average: {(
+                        (Number(qualifyingExamScore ?? 0) + Number(qualifyingInterviewScore ?? 0) + Number(examScore ?? 0))
+                        / (((qualifyingExamScore !== null) + (qualifyingInterviewScore !== null) + (examScore !== null)) || 1)
+                      ).toFixed(2)}
+                    </Typography>
+                  </>
+                ) : (
+                  <Typography variant="body2" sx={{ fontWeight: "bold", color: "gray" }}>
+                    Status: Pending
+                  </Typography>
+                )}
+              </Box>
+
             </CardContent>
+
+
+
           </Card>
         </Grid>
 
@@ -456,6 +574,7 @@ const ApplicantDashboard = () => {
               borderRadius: 3,
               boxShadow: 3,
               p: 2,
+              marginLeft: "10px",
               minHeight: 220,
               display: "flex",
               flexDirection: "column",
@@ -475,6 +594,9 @@ const ApplicantDashboard = () => {
               </Typography>
               <Typography variant="body2" sx={{ fontWeight: "bold", color: "gray" }}>
                 Status: Application is on process
+              </Typography>
+              <Typography variant="body2" sx={{ fontWeight: "bold", color: "maroon" }}>
+                College Approval Score:
               </Typography>
             </CardContent>
           </Card>
@@ -503,12 +625,43 @@ const ApplicantDashboard = () => {
               <Typography variant="h6" gutterBottom sx={{ mt: 1 }}>
                 Medical Submitted
               </Typography>
-              <Typography variant="body2" sx={{ fontWeight: "bold", color: "gray" }}>
-                Status: Pending
-              </Typography>
+
+              {medicalUploads.length === 0 ? (
+                <Typography variant="body2" sx={{ fontWeight: "bold", color: "gray" }}>
+                  Status: Pending
+                </Typography>
+              ) : (
+                medicalUploads.map((doc) => (
+                  <Box key={doc.upload_id} sx={{ mb: 1 }}>
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        fontWeight: "bold",
+                        color:
+                          doc.status === 1 ? "green" : doc.status === 2 ? "red" : "gray",
+                      }}
+                    >
+                      {doc.status === 1
+                        ? "✅ Documents Verified"
+                        : doc.status === 2
+                          ? "❌ Rejected"
+                          : doc.document_status === "Documents Verified "
+                            ? "✅ Documents Verified "
+                            : ""}
+
+                    </Typography>
+                    {doc.remarks && (
+                      <Typography variant="body2" sx={{ color: "maroon" }}>
+                        Remarks: {doc.remarks}
+                      </Typography>
+                    )}
+                  </Box>
+                ))
+              )}
             </CardContent>
           </Card>
         </Grid>
+
 
         <Grid item xs={12} md={4}>
           <Card

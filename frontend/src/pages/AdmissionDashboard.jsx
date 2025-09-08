@@ -131,26 +131,38 @@ const AdmissionDashboardPanel = () => {
 
 
         <div className="relative mb-5">
-          <Link to={'/interview'}>
+          <Link to={'/assign_interview_exam'}>
             <div className="bg-white p-4 border-4 rounded-lg border-solid border-maroon-500 absolute left-16 top-12 w-enough">
               <CollectionsBookmark className="text-maroon-500 text-2xl" />
             </div>
             <button className="bg-white text-maroon-500 border-4 rounded-lg border-solid border-maroon-500 p-4 w-80 h-32 font-medium mr-4 mt-20 ml-8 flex items-end justify-center">
-              INTERVIEW
+              ROOM SCHEDULING INTERVIEW EXAM
             </button>
           </Link>
         </div>
 
-        <div className="relative mb-5">
-          <Link to={'/qualifying_exam'}>
+     <div className="relative mb-5">
+          <Link to={'/assign_schedule_applicants_interview'}>
             <div className="bg-white p-4 border-4 rounded-lg border-solid border-maroon-500 absolute left-16 top-12 w-enough">
               <CollectionsBookmark className="text-maroon-500 text-2xl" />
             </div>
             <button className="bg-white text-maroon-500 border-4 rounded-lg border-solid border-maroon-500 p-4 w-80 h-32 font-medium mr-4 mt-20 ml-8 flex items-end justify-center">
-              QUALIFYING EXAM
+              APPLICANTS INTERVIEW SCHEDULING
             </button>
           </Link>
         </div>
+
+            <div className="relative mb-5">
+          <Link to={'/interviewer_applicant_list'}>
+            <div className="bg-white p-4 border-4 rounded-lg border-solid border-maroon-500 absolute left-16 top-12 w-enough">
+              <CollectionsBookmark className="text-maroon-500 text-2xl" />
+            </div>
+            <button className="bg-white text-maroon-500 border-4 rounded-lg border-solid border-maroon-500 p-4 w-80 h-32 font-medium mr-4 mt-20 ml-8 flex items-end justify-center">
+              INTERVIEWER APPLICANTS LIST
+            </button>
+          </Link>
+        </div>
+
 
         <div className="relative mb-5">
           <Link to={'/college_approval'}>

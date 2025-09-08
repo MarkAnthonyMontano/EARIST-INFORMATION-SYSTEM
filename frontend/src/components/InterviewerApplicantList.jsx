@@ -18,16 +18,15 @@ import { Search } from "@mui/icons-material";
 import { FcPrint } from "react-icons/fc";
 import EaristLogo from "../assets/EaristLogo.png";
 
-const ProctorApplicantList = () => {
+const InterviewerApplicantList = () => {
 
   const tabs = [
-    { label: "Entrance Exam Room Assignment", to: "/assign_entrance_exam" },
-    { label: "Entrance Exam Schedule Management", to: "/assign_schedule_applicant" },
-    { label: "Examination Profile", to: "/examination_profile" },
-    { label: "Proctor's Applicant List", to: "/proctor_applicant_list" },
+    { label: "Interview Room Assignment", to: "/assign_interview_exam" },
+    { label: "Interview Schedule Management", to: "/assign_schedule_applicants_interview" },
+    { label: "Interviewer Applicant's List", to: "/interviewer_applicant_list" },
   ];
   const navigate = useNavigate();
-  const [activeStep, setActiveStep] = useState(3);
+  const [activeStep, setActiveStep] = useState(2);
   const [clickedSteps, setClickedSteps] = useState(Array(tabs.length).fill(false));
 
 
@@ -85,7 +84,7 @@ const ProctorApplicantList = () => {
     newWin.document.write(`
       <html>
         <head>
-          <title>Proctor Applicant List</title>
+          <title>Interviewer Applicant List</title>
           <style>
             @page { size: A4; margin: 10mm; }
             body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
@@ -146,7 +145,7 @@ th {
                 <div>Nagtahan St. Sampaloc, Manila</div>
                 <div style="margin-top: 25px;">
                   <b style="font-size: 22px; letter-spacing: 1px;">
-                    Proctor Applicant List
+                    Interviewer Applicant List
                   </b>
                 </div>
               </div>
@@ -278,7 +277,7 @@ th {
             fontSize: "36px",
           }}
         >
-          PROCTOR APPLICANT LIST
+          INTERVIEWER APPLICANT LIST
         </Typography>
 
         <TextField
@@ -461,4 +460,4 @@ th {
   );
 };
 
-export default ProctorApplicantList;
+export default InterviewerApplicantList;

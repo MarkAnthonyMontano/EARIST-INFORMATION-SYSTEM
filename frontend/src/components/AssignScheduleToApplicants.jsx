@@ -34,8 +34,8 @@ const socket = io("http://localhost:5000");
 
 const AssignScheduleToApplicants = () => {
   const tabs = [
-    { label: "Room Scheduling", to: "/assign_entrance_exam" },
-    { label: "Applicant's Scheduling", to: "/assign_schedule_applicant" },
+    { label: "Entrance Exam Room Assignment", to: "/assign_entrance_exam" },
+    { label: "Entrance Exam Schedule Management", to: "/assign_schedule_applicant" },
     { label: "Examination Profile", to: "/examination_profile" },
     { label: "Proctor's Applicant List", to: "/proctor_applicant_list" },
   ];
@@ -614,7 +614,7 @@ const AssignScheduleToApplicants = () => {
     }
   }, [filteredPersons.length, totalPages]);
 
- // 🔒 Disable right-click
+  // 🔒 Disable right-click
   document.addEventListener('contextmenu', (e) => e.preventDefault());
 
   // 🔒 Block DevTools shortcuts + Ctrl+P silently
@@ -657,7 +657,7 @@ const AssignScheduleToApplicants = () => {
             fontSize: '36px',
           }}
         >
-          APPLICANT SCHEDULING
+          ENTRANCE EXAM SCHEDULE MANAGEMENT
         </Typography>
 
         <TextField
@@ -767,23 +767,25 @@ const AssignScheduleToApplicants = () => {
                 }}
               >
                 <MenuItem value="">-- Select Schedule --</MenuItem>
-                {schedules.map((s) => (
-                  <MenuItem key={s.schedule_id} value={s.schedule_id}>
-                    {s.proctor} - {s.day_description} | {s.room_description} |{" "}
-                    {new Date(`1970-01-01T${s.start_time}`).toLocaleTimeString("en-US", {
-                      hour: "numeric",
-                      minute: "2-digit",
-                      hour12: true,
-                    })}{" "}
-                    -{" "}
-                    {new Date(`1970-01-01T${s.end_time}`).toLocaleTimeString("en-US", {
-                      hour: "numeric",
-                      minute: "2-digit",
-                      hour12: true,
-                    })}
-                  </MenuItem>
+                {[...schedules]
+                 .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
 
-                ))}
+                  .map((s) => (
+                    <MenuItem key={s.schedule_id} value={s.schedule_id}>
+                      {s.proctor} - {s.day_description} | {s.building_description} | {s.room_description} |
+                      {new Date(`1970-01-01T${s.start_time}`).toLocaleTimeString("en-US", {
+                        hour: "numeric",
+                        minute: "2-digit",
+                        hour12: true,
+                      })} -{" "}
+                      {new Date(`1970-01-01T${s.end_time}`).toLocaleTimeString("en-US", {
+                        hour: "numeric",
+                        minute: "2-digit",
+                        hour12: true,
+                      })}
+                    </MenuItem>
+                  ))}
+
               </TextField>
             </Grid>
 
