@@ -117,6 +117,18 @@ const SystemDashboardPanel = () => {
           </Link>
         </div>
 
+        
+        <div className="relative">
+          <Link to={'/email_template_manager'}>
+            <div className="bg-white p-4 border-4 rounded-lg border-maroon-500 absolute left-16 top-12 w-enough">
+              <CollectionsBookmark className="text-maroon-500 text-2xl" />
+            </div>
+            <button className="bg-white text-maroon-500 border-4 rounded-lg border-maroon-500 p-4 w-80 h-32 font-medium mt-20 ml-8 flex items-end justify-center">
+              EMAIL SENDER
+            </button>
+          </Link>
+        </div>
+
       </div>
     </div>
   );

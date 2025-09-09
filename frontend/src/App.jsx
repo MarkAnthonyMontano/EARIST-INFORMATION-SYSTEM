@@ -119,6 +119,9 @@ import InterviewerApplicantList from './components/InterviewerApplicantList';
 import AssignInterviewExam from './components/AssignInterviewExam';
 import AssignScheduleToApplicantsInterviewer from './components/AssignScheduleToApplicantsInterviewer';
 
+import EmailTemplateManager from './components/EmailTemplateManager';
+
+
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
@@ -384,7 +387,7 @@ function App() {
               <Route path="/class_roster/class_list/ccs/:curriculum_id" element={<ProtectedRoute ><ClassList /></ProtectedRoute>} />
               <Route path="/class_list/ccs/:curriculum_id/:dstID" element={<ProtectedRoute><ProfessorListPerSection /></ProtectedRoute>} />
               <Route path="/class_list/css/:curriculum_id/:dstID/:courseID/:professorID" element={<ProtectedRoute><StudentList /></ProtectedRoute>} />
-
+              <Route path="/email_template_manager" element={<ProtectedRoute><EmailTemplateManager /></ProtectedRoute>} />
 
 
             </Routes>

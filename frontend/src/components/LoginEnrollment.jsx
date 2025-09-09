@@ -123,7 +123,8 @@ const LoginEnrollment = ({ setIsAuthenticated }) => {
       localStorage.setItem("email", tempLoginData.email);
       localStorage.setItem("role", tempLoginData.role);
       localStorage.setItem("person_id", tempLoginData.person_id);
-
+      localStorage.setItem("department", tempLoginData.department || "");
+      
       setIsAuthenticated(true);
       setShowOtpModal(false);
 
@@ -176,7 +177,7 @@ const LoginEnrollment = ({ setIsAuthenticated }) => {
     }
   }, [showOtpModal]);
 
- // 🔒 Disable right-click
+  // 🔒 Disable right-click
   document.addEventListener('contextmenu', (e) => e.preventDefault());
 
   // 🔒 Block DevTools shortcuts + Ctrl+P silently

@@ -2272,40 +2272,45 @@ app.post("/login", async (req, res) => {
 
   try {
     const query = `(
-      SELECT 
-        ua.id AS account_id,
-        ua.person_id,
-        ua.email,
-        ua.password,
-        ua.role,
-        NULL AS profile_image,
-        NULL AS fname,
-        NULL AS mname,
-        NULL AS lname,
-        ua.status AS status,
-        'user' AS source
-      FROM user_accounts AS ua
-      LEFT JOIN student_numbering_table AS snt ON snt.person_id = ua.person_id
-      WHERE (ua.email = ? OR snt.student_number = ?)
-    )
-    UNION ALL
-    (
-      SELECT 
-        ua.prof_id AS account_id,
-        ua.person_id,
-        ua.email,
-        ua.password,
-        ua.role,
-        ua.profile_image,
-        ua.fname,
-        ua.mname,
-        ua.lname,
-        ua.status,
-        'prof' AS source
-      FROM prof_table AS ua
-      LEFT JOIN person_prof_table AS pt ON pt.person_id = ua.person_id
-      WHERE ua.email = ?
-    );`;
+  SELECT 
+    ua.id AS account_id,
+    ua.person_id,
+    ua.email,
+    ua.password,
+    ua.role,
+    NULL AS profile_image,
+    NULL AS fname,
+    NULL AS mname,
+    NULL AS lname,
+    ua.status AS status,
+    'user' AS source,
+    ua.dprtmnt_id,
+    dt.dprtmnt_name
+  FROM user_accounts AS ua
+  LEFT JOIN dprtmnt_table AS dt ON ua.dprtmnt_id = dt.dprtmnt_id
+  LEFT JOIN student_numbering_table AS snt ON snt.person_id = ua.person_id
+  WHERE (ua.email = ? OR snt.student_number = ?)
+)
+UNION ALL
+(
+  SELECT 
+    ua.prof_id AS account_id,
+    ua.person_id,
+    ua.email,
+    ua.password,
+    ua.role,
+    ua.profile_image,
+    ua.fname,
+    ua.mname,
+    ua.lname,
+    ua.status,
+    'prof' AS source,
+    NULL AS dprtmnt_id,
+    NULL AS dprtmnt_name
+  FROM prof_table AS ua
+  LEFT JOIN person_prof_table AS pt ON pt.person_id = ua.person_id
+  WHERE ua.email = ?
+);`;
 
     const [results] = await db3.query(query, [loginCredentials, loginCredentials, loginCredentials]);
 
@@ -2377,7 +2382,7 @@ app.post("/login", async (req, res) => {
 
     // generate JWT
     const token = webtoken.sign(
-      { person_id: user.person_id, email: user.email, role: user.role },
+      { person_id: user.person_id, email: user.email, role: user.role, department: user.department },
       process.env.JWT_SECRET,
       { expiresIn: "24h" }
     );
@@ -2388,6 +2393,7 @@ app.post("/login", async (req, res) => {
       email: user.email,
       role: user.role,
       person_id: user.person_id,
+      department: user.dprtmnt_id
     });
   } catch (error) {
     console.error("Login error:", error);
@@ -4190,7 +4196,7 @@ io.on("connection", (socket) => {
     return `${h}:${minutes} ${ampm}`;
   }
 
-  socket.on("send_interview_emails", async ({ schedule_id, applicant_numbers }) => {
+  socket.on("send_interview_emails", async ({ schedule_id, applicant_numbers, subject, senderName, message }) => {
     try {
       if (!schedule_id || !Array.isArray(applicant_numbers) || applicant_numbers.length === 0) {
         socket.emit("send_schedule_emails_result", { success: false, error: "Invalid data provided." });
@@ -4207,48 +4213,35 @@ io.on("connection", (socket) => {
         return;
       }
 
-      // ✅ Format times for email
-      const formattedStart = formatTime(schedule.start_time);
-      const formattedEnd = formatTime(schedule.end_time);
-
       const [applicants] = await db.query(
         `SELECT 
-          ia.applicant_id,
-          a.applicant_number,
-          p.person_id,
-          p.first_name,
-          p.last_name,
-          p.emailAddress
-       FROM interview_applicants ia
-       LEFT JOIN applicant_numbering_table a ON ia.applicant_id = a.applicant_number
-       LEFT JOIN person_table p ON a.person_id = p.person_id
-       WHERE ia.applicant_id IN (?)`,
+        ia.applicant_id,
+        a.applicant_number,
+        p.person_id,
+        p.first_name,
+        p.last_name,
+        p.emailAddress
+      FROM interview_applicants ia
+      LEFT JOIN applicant_numbering_table a ON ia.applicant_id = a.applicant_number
+      LEFT JOIN person_table p ON a.person_id = p.person_id
+      WHERE ia.applicant_id IN (?)`,
         [applicant_numbers]
       );
 
       for (const appl of applicants) {
         const mailOptions = {
-          from: `"EARIST Manila" <${process.env.EMAIL_USER}>`,
+          from: `"${senderName || "EARIST Manila"}" <${process.env.EMAIL_USER}>`,
           to: appl.emailAddress,
-          subject: "Interview Schedule Assignment",
-          text: `Hello ${appl.first_name} ${appl.last_name},
+          subject: subject || "Interview Schedule Assignment",
+          text: message
+            .replace("{first_name}", appl.first_name)
+            .replace("{last_name}", appl.last_name)
+            .replace("{applicant_number}", appl.applicant_number)
+            .replace("{day}", schedule.day_description)
+            .replace("{room}", schedule.room_description)
+            .replace("{start_time}", formatTime(schedule.start_time))
+            .replace("{end_time}", formatTime(schedule.end_time)),
 
-You have been assigned to the following Interview Schedule:
-
-📅 Day: ${schedule.day_description}
-🏫 Room: ${schedule.room_description}
-🕒 Time: ${formattedStart} - ${formattedEnd}
-🆔 Applicant No: ${appl.applicant_number}
-
-Please arrive on time and bring your requirements.
-
-📌 𝑾𝒉𝒂𝒕 𝒕𝒐 𝑩𝒓𝒊𝒏𝒈:
-- Long Blue Folder
-- Examination Permit
-- Ballpen
-👕 𝐀𝐓𝐓𝐈𝐑𝐄: 𝐒𝐭𝐫𝐢𝐜𝐭𝐥𝐲 𝐰𝐞𝐚𝐫 𝐖𝐇𝐈𝐓𝐄 𝐬𝐡𝐢𝐫𝐭 𝐚𝐧𝐝 𝐩𝐚𝐧𝐭𝐬.
-
-- EARIST Manila Admissions`,
         };
 
         try {
@@ -4259,28 +4252,25 @@ Please arrive on time and bring your requirements.
         }
       }
 
-      // ✅ Update both tables
       await db.query(
-        `UPDATE interview_applicants 
-       SET email_sent = 1 
-       WHERE applicant_id IN (?)`,
+        `UPDATE interview_applicants SET email_sent = 1 WHERE applicant_id IN (?)`,
         [applicant_numbers]
       );
 
       await db.query(
-        `UPDATE person_status_table 
-       SET interview_status = 1
-       WHERE applicant_id IN (?)`,
+        `UPDATE person_status_table SET interview_status = 1 WHERE applicant_id IN (?)`,
         [applicant_numbers]
       );
 
       socket.emit("send_schedule_emails_result", { success: true, message: "Emails sent successfully." });
       io.emit("schedule_updated", { schedule_id });
+
     } catch (err) {
       console.error("❌ Error sending interview emails:", err);
       socket.emit("send_schedule_emails_result", { success: false, error: "Failed to send emails." });
     }
   });
+
 });
 
 
@@ -8103,6 +8093,78 @@ app.get('/api/person_status_by_applicant/:applicant_number', (req, res) => {
   });
 });
 
+// GET all templates
+app.get("/api/email-templates", async (req, res) => {
+  try {
+    const [rows] = await db.query("SELECT * FROM email_templates ORDER BY updated_at DESC");
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch templates" });
+  }
+});
+
+// CREATE template
+app.post("/api/email-templates", async (req, res) => {
+  try {
+    const { sender_name, is_active = 1 } = req.body;
+    if (!sender_name) return res.status(400).json({ error: "Sender name is required" });
+
+    const [result] = await db.query(
+      "INSERT INTO email_templates (sender_name, is_active) VALUES (?, ?)",
+      [sender_name, is_active ? 1 : 0]
+    );
+    res.status(201).json({ template_id: result.insertId });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to create template" });
+  }
+});
+
+// UPDATE template
+app.put("/api/email-templates/:id", async (req, res) => {
+  try {
+    const { sender_name, is_active } = req.body;
+    const [result] = await db.query(
+      "UPDATE email_templates SET sender_name = COALESCE(?, sender_name), is_active = COALESCE(?, is_active) WHERE template_id = ?",
+      [sender_name, is_active, req.params.id]
+    );
+    if (result.affectedRows === 0) return res.status(404).json({ error: "Not found" });
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to update template" });
+  }
+});
+
+// DELETE template
+app.delete("/api/email-templates/:id", async (req, res) => {
+  try {
+    const [result] = await db.query("DELETE FROM email_templates WHERE template_id = ?", [req.params.id]);
+    if (result.affectedRows === 0) return res.status(404).json({ error: "Not found" });
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to delete template" });
+  }
+});
+
+app.get("/api/email-templates/:department_id", async (req, res) => {
+  const { department_id } = req.query;
+  console.log("Department ID: ", department_id);
+
+  try {
+    const [rows] = await db.query(
+      "SELECT template_id, sender_name FROM email_templates WHERE is_active = 1 AND department_id = ?",
+      [department_id]
+    );
+
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch active senders" });
+  }
+});
 
 http.listen(5000, () => {
   console.log("Server with Socket.IO running on port 5000");

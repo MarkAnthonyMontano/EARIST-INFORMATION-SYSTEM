@@ -33,6 +33,17 @@ const socket = io("http://localhost:5000");
 
 
 const AssignScheduleToApplicantsInterviewer = () => {
+    const [user, setUser] = useState(null);
+    const [emailSender, setEmailSender] = useState("");
+
+    useEffect(() => {
+        const storedUser = localStorage.getItem("user");
+        if (storedUser) {
+            setUser(JSON.parse(storedUser)); // parse JSON back to object
+        }
+    }, []);
+
+
     const tabs = [
         { label: "Interview Room Assignment", to: "/assign_interview_exam" },
         { label: "Interview Schedule Management", to: "/assign_schedule_applicants_interview" },
@@ -46,11 +57,25 @@ const AssignScheduleToApplicantsInterviewer = () => {
     const [activeStep, setActiveStep] = useState(2);
     const [clickedSteps, setClickedSteps] = useState(Array(tabs.length).fill(false));
 
+    useEffect(() => {
+        const fetchActiveSenders = async () => {
+            if (!user) return;
 
-    const handleStepClick = (index, to) => {
-        setActiveStep(index);
-        navigate(to); // this will actually change the page
-    };
+            try {
+                const res = await axios.get(
+                    `http://localhost:5000/api/email-templates/active-senders/${user.department}`
+                );
+                if (res.data.length > 0) {
+                    setEmailSender(res.data[0].sender_name);
+                }
+            } catch (err) {
+                console.error("Error fetching active senders:", err);
+            }
+        };
+
+        fetchActiveSenders();
+    }, [user]);
+
 
 
     const [applicants, setApplicants] = useState([]);
@@ -420,40 +445,29 @@ const AssignScheduleToApplicantsInterviewer = () => {
     const confirmSendEmails = () => {
         setConfirmOpen(false);
 
-        if (!selectedSchedule) {
-            setSnack({ open: true, message: "Please select a schedule first.", severity: "warning" });
-            return;
-        }
+        const assignedApplicants = Array.from(selectedApplicants);
 
-        const assignedApplicants = persons
-            .filter(p => p.schedule_id === selectedSchedule)
-            .map(p => p.applicant_number);
-
-        if (assignedApplicants.length === 0) {
-            setSnack({ open: true, message: "No applicants assigned to this schedule.", severity: "warning" });
-            return;
-        }
-
-        socket.emit("send_interview_emails", { schedule_id: selectedSchedule, applicant_numbers: assignedApplicants });
+        socket.emit("send_interview_emails", {
+            schedule_id: selectedSchedule,
+            applicant_numbers: assignedApplicants,
+            subject: emailSubject,
+            senderName: emailSender,
+            message: emailMessage
+        });
 
         socket.once("send_schedule_emails_result", (emailRes) => {
-            if (emailRes.success) {
-                setSnack({
-                    open: true,
-                    message: emailRes.message || "Emails sent successfully.",
-                    severity: "success"
-                });
-                setSelectedApplicants(new Set());
-            } else {
-                setSnack({
-                    open: true,
-                    message: emailRes.error || "Failed to send emails.",
-                    severity: "error"
-                });
-            }
+            setSnack({
+                open: true,
+                message: emailRes.success ? emailRes.message : emailRes.error,
+                severity: emailRes.success ? "success" : "error"
+            });
         });
     };
 
+
+    // Email fields - start empty
+    const [emailSubject, setEmailSubject] = useState("");
+    const [emailMessage, setEmailMessage] = useState("");
 
 
 
@@ -1314,25 +1328,43 @@ const AssignScheduleToApplicantsInterviewer = () => {
             </Snackbar>
 
 
-
-
-
-            {/* Confirmation Dialog */}
-            <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)}>
-                <DialogTitle>Confirm Email Sending</DialogTitle>
+            <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)} maxWidth="md" fullWidth>
+                <DialogTitle>Edit & Send Email</DialogTitle>
                 <DialogContent>
-                    Are you sure you want to send exam schedule emails? Please confirm that
-                    the Applicant's Emailed Address are correct.
+                    <TextField fullWidth value={emailSender}/>
+
+                    <TextField
+                        fullWidth
+                        label="Email Subject"
+                        value={emailSubject}
+                        onChange={(e) => setEmailSubject(e.target.value)}
+                        sx={{ mb: 2, mt: 2 }}
+                    />
+                    <TextField
+                        fullWidth
+                        label="Message"
+                        value={emailMessage}
+                        onChange={(e) => setEmailMessage(e.target.value)}
+                        multiline
+                        rows={10}
+                    />
+                    <Typography variant="caption" color="gray">
+                        🔑 Available placeholders: {"{first_name}, {last_name}, {applicant_number}, {day}, {room}, {start_time}, {end_time}"}
+                    </Typography>
                 </DialogContent>
                 <DialogActions>
                     <Button onClick={() => setConfirmOpen(false)} color="error">
                         Cancel
                     </Button>
                     <Button onClick={confirmSendEmails} color="success" variant="contained">
-                        Yes, Send Emails
+                        Send Emails
                     </Button>
                 </DialogActions>
             </Dialog>
+
+
+
+
 
         </Box>
     );

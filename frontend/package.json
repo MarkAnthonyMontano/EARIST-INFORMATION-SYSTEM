@@ -16,6 +16,7 @@
     "@mui/material": "^6.4.11",
     "axios": "^1.8.3",
     "dayjs": "^1.11.15",
+    "jwt-decode": "^3.1.2",
     "motion": "^12.23.12",
     "nodemailer": "^7.0.5",
     "qrcode.react": "^4.2.0",
