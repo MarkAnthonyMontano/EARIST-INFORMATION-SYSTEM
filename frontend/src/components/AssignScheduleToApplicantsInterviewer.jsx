@@ -34,14 +34,49 @@ const socket = io("http://localhost:5000");
 
 const AssignScheduleToApplicantsInterviewer = () => {
     const [user, setUser] = useState(null);
-    const [emailSender, setEmailSender] = useState("");
+    const [adminData, setAdminData] = useState({ dprtmnt_id: "" });
+const [emailSender, setEmailSender] = useState("");
 
     useEffect(() => {
-        const storedUser = localStorage.getItem("user");
-        if (storedUser) {
-            setUser(JSON.parse(storedUser)); // parse JSON back to object
-        }
+    const storedEmail = localStorage.getItem("email");
+    if (storedEmail) {
+        setUser(storedEmail); // email is just a string
+    }
     }, []);
+
+    const fetchPersonData = async () => {
+    try {
+        const res = await axios.get(`http://localhost:5000/api/admin_data/${user}`);
+        setAdminData(res.data); // { dprtmnt_id: "..." }
+    } catch (err) {
+        console.error("Error fetching admin data:", err);
+    }
+    };
+
+    useEffect(() => {
+    if (user) {
+        fetchPersonData();
+    }
+    }, [user]);
+
+    useEffect(() => {
+    const fetchActiveSenders = async () => {
+        if (!adminData.dprtmnt_id) return;
+
+        try {
+        const res = await axios.get(
+            `http://localhost:5000/api/email-templates/active-senders?department_id=${adminData.dprtmnt_id}`
+        );
+        if (res.data.length > 0) {
+            setEmailSender(res.data[0].sender_name);
+        }
+        } catch (err) {
+        console.error("Error fetching active senders:", err);
+        }
+    };
+
+    fetchActiveSenders();
+    }, [user, adminData.dprtmnt_id]);
 
 
     const tabs = [
@@ -56,28 +91,6 @@ const AssignScheduleToApplicantsInterviewer = () => {
     const navigate = useNavigate();
     const [activeStep, setActiveStep] = useState(2);
     const [clickedSteps, setClickedSteps] = useState(Array(tabs.length).fill(false));
-
-    useEffect(() => {
-        const fetchActiveSenders = async () => {
-            if (!user) return;
-
-            try {
-                const res = await axios.get(
-                    `http://localhost:5000/api/email-templates/active-senders/${user.department}`
-                );
-                if (res.data.length > 0) {
-                    setEmailSender(res.data[0].sender_name);
-                }
-            } catch (err) {
-                console.error("Error fetching active senders:", err);
-            }
-        };
-
-        fetchActiveSenders();
-    }, [user]);
-
-
-
     const [applicants, setApplicants] = useState([]);
     const [selectedSchedule, setSelectedSchedule] = useState("");
     const [selectedApplicants, setSelectedApplicants] = useState(new Set());

@@ -1,6 +1,5 @@
 import { useRef, useState, useEffect } from "react";
 import { Box, Container } from "@mui/material";
-import { jwtDecode } from "jwt-decode";
 import EaristLogo from "../assets/EaristLogo.png";
 import SentimentVerySatisfiedIcon from '@mui/icons-material/SentimentVerySatisfied';
 import SentimentSatisfiedAltIcon from '@mui/icons-material/SentimentSatisfiedAlt';

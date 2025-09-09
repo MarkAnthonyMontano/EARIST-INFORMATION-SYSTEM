@@ -10,6 +10,7 @@ const ECATApplicationForm = () => {
   const [user, setUser] = useState("");
   const [userRole, setUserRole] = useState("");
   const [person, setPerson] = useState({
+
     profile_img: "",
     campus: "",
     academicProgram: "",
@@ -62,6 +63,21 @@ const ECATApplicationForm = () => {
     mother_contact: "", mother_occupation: "", mother_income: "", guardian: "", guardian_family_name: "", guardian_given_name: "",
     guardian_middle_name: "", guardian_ext: "", guardian_nickname: "", guardian_address: "", guardian_contact: "", guardian_email: "",
   });
+
+  
+  useEffect(() => {
+    console.log("Fetched campus:", person.campus);
+  }, [person]);
+
+
+  const campusAddresses = {
+    0: "Nagtahan St. Sampaloc, Manila",
+    1: "Blk. 3 Lot 2, 5 Congressional Rd, General Mariano Alvarez",
+  };
+
+
+  const campusAddress = campusAddresses[person?.campus] || "";
+
   // ✅ Fetch person data from backend
   const fetchPersonData = async (id) => {
     try {
@@ -220,25 +236,6 @@ const ECATApplicationForm = () => {
 
   }
 
-  // 🔒 Disable right-click
- // 🔒 Disable right-click
-  document.addEventListener('contextmenu', (e) => e.preventDefault());
-
-  // 🔒 Block DevTools shortcuts + Ctrl+P silently
-  document.addEventListener('keydown', (e) => {
-    const isBlockedKey =
-      e.key === 'F12' || // DevTools
-      e.key === 'F11' || // Fullscreen
-      (e.ctrlKey && e.shiftKey && (e.key.toLowerCase() === 'i' || e.key.toLowerCase() === 'j')) || // Ctrl+Shift+I/J
-      (e.ctrlKey && e.key.toLowerCase() === 'u') || // Ctrl+U (View Source)
-      (e.ctrlKey && e.key.toLowerCase() === 'p');   // Ctrl+P (Print)
-
-    if (isBlockedKey) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-  });
-
 
 
   return (
@@ -325,11 +322,28 @@ const ECATApplicationForm = () => {
                 fontSize: "10px",
                 lineHeight: "1.5",
               }}>
-                <div style={{ fontSize: "12px", letterSpacing: "1px", marginLeft: "-60px" }}>Republic of the Philippines</div>
-                <div style={{ fontSize: "12px", letterSpacing: "1px", marginLeft: "-60px" }}><b>EULOGIO "AMANG" RODRIGUEZ</b></div>
-                <div style={{ fontSize: "12px", letterSpacing: "1px", marginLeft: "-60px" }}><b>INSTITUTE OF SCIENCE AND TECHNOLOGY </b></div>
-                <div style={{ fontSize: "12px", letterSpacing: "1px", marginLeft: "-60px" }}>Nagtahan, Sampaloc, Manila 1008</div>
-                <div style={{ fontSize: "9px", marginLeft: "-60px" }}><b>STUDENT ADMISSION REGISTRATION AND RECORDS MANAGEMENT SERVICES</b></div>
+                <div style={{ fontSize: "12px", letterSpacing: "1px", marginLeft: "-60px" }}>
+                  Republic of the Philippines
+                </div>
+                <div style={{ fontSize: "12px", letterSpacing: "1px", marginLeft: "-60px" }}>
+                  <b>EULOGIO "AMANG" RODRIGUEZ</b>
+                </div>
+                <div style={{ fontSize: "12px", letterSpacing: "1px", marginLeft: "-60px" }}>
+                  <b>INSTITUTE OF SCIENCE AND TECHNOLOGY</b>
+                </div>
+
+                {/* ✅ Only dynamic campus address */}
+                {campusAddress && (
+                  <div style={{ fontSize: "12px", letterSpacing: "1px", marginLeft: "-60px" }}>
+                    {campusAddress}
+                  </div>
+                )}
+
+                <div style={{ fontSize: "9px", marginLeft: "-60px" }}>
+                  <b>STUDENT ADMISSION REGISTRATION AND RECORDS MANAGEMENT SERVICES</b>
+                </div>
+
+
 
                 <div style={{ fontSize: "20px", fontWeight: "bold", marginLeft: "-60px", letterSpacing: "1px" }}>
                   ECAT APPLICATION FORM

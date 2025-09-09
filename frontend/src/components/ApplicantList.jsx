@@ -44,7 +44,7 @@ const ApplicantList = () => {
     const location = useLocation();
     const queryParams = new URLSearchParams(location.search);
     const queryPersonId = (queryParams.get("person_id") || "").trim();
-
+     
     const handleRowClick = (person_id) => {
         if (!person_id) return;
 
@@ -97,7 +97,7 @@ const ApplicantList = () => {
     const [userID, setUserID] = useState("");
     const [user, setUser] = useState("");
     const [userRole, setUserRole] = useState("");
-
+    const [adminData, setAdminData] = useState({ dprtmnt_id: "" });
 
     useEffect(() => {
         const storedUser = localStorage.getItem("email");
@@ -124,6 +124,20 @@ const ApplicantList = () => {
         window.location.href = "/login";
     }, [queryPersonId]);
 
+    const fetchPersonData = async () => {
+    try {
+        const res = await axios.get(`http://localhost:5000/api/admin_data/${user}`);
+        setAdminData(res.data); // { dprtmnt_id: "..." }
+    } catch (err) {
+        console.error("Error fetching admin data:", err);
+    }
+    };
+
+    useEffect(() => {
+    if (user) {
+        fetchPersonData();
+    }
+    }, [user]);
 
     const [error, setError] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
@@ -214,10 +228,12 @@ const ApplicantList = () => {
     const [curriculumOptions, setCurriculumOptions] = useState([]);
 
     useEffect(() => {
+        if (!adminData.dprtmnt_id) return;
+
         const fetchCurriculums = async () => {
             try {
-                const response = await axios.get("http://localhost:5000/api/applied_program");
-                console.log("✅ curriculumOptions:", response.data); // <--- add this
+                const response = await axios.get(`http://localhost:5000/api/applied_program/${adminData.dprtmnt_id}`);
+                console.log("✅ curriculumOptions:", response.data); 
                 setCurriculumOptions(response.data);
             } catch (error) {
                 console.error("Error fetching curriculum options:", error);
@@ -225,7 +241,7 @@ const ApplicantList = () => {
         };
 
         fetchCurriculums();
-    }, []);
+    }, [adminData.dprtmnt_id]);
 
     const [selectedApplicantStatus, setSelectedApplicantStatus] = useState("");
     const [sortBy, setSortBy] = useState("name");

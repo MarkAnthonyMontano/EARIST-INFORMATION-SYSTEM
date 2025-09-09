@@ -154,6 +154,11 @@ const ScheduleChecker = () => {
         return;
       }
 
+      const timeValidation = await axios.post("http//localhost:5000/api/check_time", {
+        start_time: selectedStartTime,
+        end_time: selectedEndTime,
+      })
+
       const timeResponse = await axios.post("http://localhost:5000/api/check-conflict", {
         day: selectedDay,
         start_time: selectedStartTime,
@@ -208,7 +213,6 @@ const ScheduleChecker = () => {
       setSelectedRoom("")
       setSelectedSubject("")
       setSelectedProf("")
-      setSelectedSchoolYear("")
       setSelectedStartTime("")
       setSelectedEndTime("")
       fetchSchedule()
@@ -421,8 +425,8 @@ const ScheduleChecker = () => {
               <select className="border border-gray-500 outline-none rounded w-full" value={selectedDay} onChange={(e) => setSelectedDay(e.target.value)} required>
                 <option value="">Select Day</option>
                 {dayList.map((day) => (
-                  <option key={day.id} value={day.id}>
-                    {day.description}
+                  <option key={day.day_id} value={day.day_id}>
+                    {day.day_description}
                   </option>
                 ))}
               </select>

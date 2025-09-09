@@ -8,10 +8,10 @@ import {
     TableContainer,
     Table,
     TableHead,
-    Card,
     TableRow,
     FormControl,
     Select,
+    Card,
     TableCell,
     TextField,
     MenuItem,
@@ -22,47 +22,51 @@ import {
 import { Search } from '@mui/icons-material';
 import { io } from "socket.io-client";
 import { Snackbar, Alert } from '@mui/material';
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import { FcPrint } from "react-icons/fc";
 import EaristLogo from "../assets/EaristLogo.png";
 import { Link } from "react-router-dom";
 import PersonIcon from "@mui/icons-material/Person";
 import DescriptionIcon from "@mui/icons-material/Description";
-import AssignmentIcon from "@mui/icons-material/Assignment";
-import RecordVoiceOverIcon from "@mui/icons-material/RecordVoiceOver";
-import SchoolIcon from "@mui/icons-material/School";
+import QuizIcon from '@mui/icons-material/Quiz';
+import AssignmentIcon from '@mui/icons-material/Assignment';
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import LocalHospitalIcon from "@mui/icons-material/LocalHospital";
 import HowToRegIcon from "@mui/icons-material/HowToReg";
 import ListAltIcon from "@mui/icons-material/ListAlt";
+import SchoolIcon from '@mui/icons-material/School';        // For Entrance Examination Scores
 import FactCheckIcon from '@mui/icons-material/FactCheck';  // For Qualifying Examination Scores
-
 
 const socket = io("http://localhost:5000");
 
-const ApplicantList = () => {
+const AdmissionProcessForCollege = () => {
+    const location = useLocation();
+    const queryParams = new URLSearchParams(location.search);
+    const queryPersonId = (queryParams.get("person_id") || "").trim();
+     
     const handleRowClick = (person_id) => {
         if (!person_id) return;
 
-        // Store person_id so AdminDashboard1 can use it
-        sessionStorage.setItem("admin_edit_person_id", person_id);
+        sessionStorage.setItem("admin_edit_person_id", String(person_id));
+        sessionStorage.setItem("admin_edit_person_id_source", "applicant_list");
+        sessionStorage.setItem("admin_edit_person_id_ts", String(Date.now()));
 
-        // Navigate with query param too
+        // ✅ Always pass person_id in the URL
         navigate(`/admin_dashboard1?person_id=${person_id}`);
     };
+
     const tabs1 = [
-       { label: "Applicant List", to: "/applicant_list", icon: <ListAltIcon /> },
-            { label: "Applicant Form", to: "/admin_dashboard1", icon: <PersonIcon /> },
-            { label: "Documents Submitted", to: "/student_requirements", icon: <DescriptionIcon /> },
-            { label: "Entrance Examination Scores", to: "/applicant_scoring", icon: <SchoolIcon /> },
-            { label: "Qualifying Examination Scores", to: "/qualifying_exam_scores", icon: <FactCheckIcon /> },
-            { label: "College Approval", to: "/college_approval", icon: <CheckCircleIcon /> },
-            { label: "Medical Clearance", to: "/medical_clearance", icon: <LocalHospitalIcon /> },
-            { label: "Student Numbering", to: "/student_numbering", icon: <HowToRegIcon /> },
-
+        { label: "Applicant List", to: "/applicant_list", icon: <ListAltIcon /> },
+        { label: "Applicant Form", to: "/admin_dashboard1", icon: <PersonIcon /> },
+        { label: "Documents Submitted", to: "/student_requirements", icon: <DescriptionIcon /> },
+        { label: "Entrance Examination Scores", to: "/applicant_scoring", icon: <SchoolIcon /> },
+        { label: "Qualifying Examination Scores", to: "/qualifying_exam_scores", icon: <FactCheckIcon /> },
+        { label: "College Approval", to: "/college_approval", icon: <CheckCircleIcon /> },
+        { label: "Medical Clearance", to: "/medical_clearance", icon: <LocalHospitalIcon /> },
+        { label: "Student Numbering", to: "/student_numbering", icon: <HowToRegIcon /> },
     ];
-
+    
     const navigate = useNavigate();
     const [activeStep, setActiveStep] = useState(0);
     const [clickedSteps, setClickedSteps] = useState(Array(tabs1.length).fill(false));
@@ -70,9 +74,21 @@ const ApplicantList = () => {
 
     const handleStepClick = (index, to) => {
         setActiveStep(index);
-        navigate(to); // this will actually change the page
+        const pid = sessionStorage.getItem("admin_edit_person_id");
+
+        if (pid && to !== "/applicant_list") {
+            navigate(`${to}?person_id=${pid}`);
+        } else {
+            navigate(to);
+        }
     };
 
+
+    useEffect(() => {
+        if (location.search.includes("person_id")) {
+            navigate("/applicant_list", { replace: true });
+        }
+    }, [location, navigate]);
 
     const [persons, setPersons] = useState([]);
 
@@ -81,32 +97,47 @@ const ApplicantList = () => {
     const [userID, setUserID] = useState("");
     const [user, setUser] = useState("");
     const [userRole, setUserRole] = useState("");
-
+    const [adminData, setAdminData] = useState({ dprtmnt_id: "" });
 
     useEffect(() => {
         const storedUser = localStorage.getItem("email");
         const storedRole = localStorage.getItem("role");
-        const storedID = localStorage.getItem("person_id");
+        const loggedInPersonId = localStorage.getItem("person_id");
+        const searchedPersonId = sessionStorage.getItem("admin_edit_person_id");
 
-        if (storedUser && storedRole && storedID) {
-            setUser(storedUser);
-            setUserRole(storedRole);
-            setUserID(storedID);
-
-            if (storedRole === "registrar") {
-
-                if (storedID !== "undefined") {
-
-                } else {
-                    console.warn("Stored person_id is invalid:", storedID);
-                }
-            } else {
-                window.location.href = "/login";
-            }
-        } else {
+        if (!storedUser || !storedRole || !loggedInPersonId) {
             window.location.href = "/login";
+            return;
         }
-    }, []);
+
+        setUser(storedUser);
+        setUserRole(storedRole);
+
+        const allowedRoles = ["registrar", "applicant", "superadmin"];
+        if (allowedRoles.includes(storedRole)) {
+            const targetId = queryPersonId || searchedPersonId || loggedInPersonId;
+            sessionStorage.setItem("admin_edit_person_id", targetId);
+            setUserID(targetId);
+            return;
+        }
+
+        window.location.href = "/login";
+    }, [queryPersonId]);
+
+    const fetchPersonData = async () => {
+    try {
+        const res = await axios.get(`http://localhost:5000/api/admin_data/${user}`);
+        setAdminData(res.data); // { dprtmnt_id: "..." }
+    } catch (err) {
+        console.error("Error fetching admin data:", err);
+    }
+    };
+
+    useEffect(() => {
+    if (user) {
+        fetchPersonData();
+    }
+    }, [user]);
 
     const [error, setError] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
@@ -197,10 +228,12 @@ const ApplicantList = () => {
     const [curriculumOptions, setCurriculumOptions] = useState([]);
 
     useEffect(() => {
+        if (!adminData.dprtmnt_id) return;
+
         const fetchCurriculums = async () => {
             try {
-                const response = await axios.get("http://localhost:5000/api/applied_program");
-                console.log("✅ curriculumOptions:", response.data); // <--- add this
+                const response = await axios.get(`http://localhost:5000/api/applied_program/${adminData.dprtmnt_id}`);
+                console.log("✅ curriculumOptions:", response.data); 
                 setCurriculumOptions(response.data);
             } catch (error) {
                 console.error("Error fetching curriculum options:", error);
@@ -208,7 +241,7 @@ const ApplicantList = () => {
         };
 
         fetchCurriculums();
-    }, []);
+    }, [adminData.dprtmnt_id]);
 
     const [selectedApplicantStatus, setSelectedApplicantStatus] = useState("");
     const [sortBy, setSortBy] = useState("name");
@@ -224,7 +257,6 @@ const ApplicantList = () => {
     const [semesters, setSchoolSemester] = useState([]);
     const [selectedSchoolYear, setSelectedSchoolYear] = useState("");
     const [selectedSchoolSemester, setSelectedSchoolSemester] = useState('');
-    const [selectedActiveSchoolYear, setSelectedActiveSchoolYear] = useState('');
 
     useEffect(() => {
         axios
@@ -239,20 +271,6 @@ const ApplicantList = () => {
             .then((res) => setSchoolSemester(res.data))
             .catch((err) => console.error(err));
     }, [])
-
-    useEffect(() => {
-
-        axios
-            .get(`http://localhost:5000/active_school_year`)
-            .then((res) => {
-                if (res.data.length > 0) {
-                    setSelectedSchoolYear(res.data[0].year_id);
-                    setSelectedSchoolSemester(res.data[0].semester_id);
-                }
-            })
-            .catch((err) => console.error(err));
-
-    }, []);
 
     const handleSchoolYearChange = (event) => {
         setSelectedSchoolYear(event.target.value);
@@ -276,16 +294,16 @@ const ApplicantList = () => {
                 person.campus === "" || // All Campuses
                 String(personData.campus) === String(person.campus);
 
-
             // ✅ FIX: use document_status and normalize both sides
             const matchesApplicantStatus =
                 selectedApplicantStatus === "" ||
                 normalize(personData.document_status) === normalize(selectedApplicantStatus);
 
+            // (keep your registrar filter; shown here with the earlier mapping)
             const matchesRegistrarStatus =
                 selectedRegistrarStatus === "" ||
-                String(personData.registrar_status) === String(selectedRegistrarStatus);
-
+                (selectedRegistrarStatus === "Submitted" && personData.registrar_status === 1) ||
+                (selectedRegistrarStatus === "Unsubmitted / Incomplete" && personData.registrar_status === 0);
 
             const programInfo = allCurriculums.find(
                 (opt) => opt.curriculum_id?.toString() === personData.program?.toString()
@@ -304,8 +322,10 @@ const ApplicantList = () => {
 
             const matchesSchoolYear =
                 selectedSchoolYear === "" || (schoolYear && (String(applicantAppliedYear) === String(schoolYear.current_year)))
-                
-            const matchesSemester = selectedSchoolSemester;
+
+            const matchesSemester =
+                selectedSchoolSemester === "" ||
+                personData.semester_id === selectedSchoolSemester;
 
             // date range (unchanged)
             let matchesDateRange = true;
@@ -352,18 +372,6 @@ const ApplicantList = () => {
             } else if (sortBy === "email") {
                 fieldA = a.emailAddress?.toLowerCase() || "";
                 fieldB = b.emailAddress?.toLowerCase() || "";
-            } else if (sortBy === "Date Applied") {
-                fieldA = new Date(a.created_at);
-                fieldB = new Date(b.created_at);
-            } else if (sortBy === "Date Updated") {
-                fieldA = new Date(a.last_updated || 0);
-                fieldB = new Date(b.last_updated || 0);
-            } else if (sortBy === "Registrar Status") {
-                fieldA = a.registrar_status;
-                fieldB = b.registrar_status;
-            } else if (sortBy === "SHS GWA") {
-                fieldA = parseFloat(a.generalAverage1) || 0;
-                fieldB = parseFloat(b.generalAverage1) || 0;
             } else {
                 return 0;
             }
@@ -478,18 +486,19 @@ const ApplicantList = () => {
     const divToPrintRef = useRef();
 
 
-const printDiv = () => {
-  // Pick address based on selected campus
-  let campusAddress = "";
-  if (person?.campus === "0") {
-    campusAddress = "Nagtahan St. Sampaloc, Manila";
-  } else if (person?.campus === "1") {
-    campusAddress = "Blk. 3 Lot 2, 5 Congressional Rd, General Mariano Alvarez";
-  }
 
-  const newWin = window.open("", "Print-Window");
-  newWin.document.open();
-  newWin.document.write(`
+    const printDiv = () => {
+        // Pick address based on selected campus
+        let campusAddress = "";
+        if (person?.campus === "0") {
+            campusAddress = "Nagtahan St. Sampaloc, Manila";
+        } else if (person?.campus === "1") {
+            campusAddress = "Blk. 3 Lot 2, 5 Congressional Rd, General Mariano Alvarez";
+        }
+
+        const newWin = window.open("", "Print-Window");
+        newWin.document.open();
+        newWin.document.write(`
     <html>
       <head>
         <title>Applicant List</title>
@@ -584,16 +593,16 @@ const printDiv = () => {
                   <td>${person.applicant_number ?? "N/A"}</td>
                   <td>${person.last_name}, ${person.first_name} ${person.middle_name ?? ""} ${person.extension ?? ""}</td>
                   <td>${curriculumOptions.find(
-                    item => item.curriculum_id?.toString() === person.program?.toString()
-                  )?.program_code ?? "N/A"}</td>
+            item => item.curriculum_id?.toString() === person.program?.toString()
+        )?.program_code ?? "N/A"}</td>
                   <td>${person.generalAverage1 ?? ""}</td>
                   <td>${new Date(person.created_at).toLocaleDateString("en-PH")}</td>
                   <td>${person.registrar_status === 1
-                        ? "Submitted"
-                        : person.registrar_status === 0
-                          ? "Unsubmitted / Incomplete"
-                          : ""
-                      }</td>
+                ? "Submitted"
+                : person.registrar_status === 0
+                    ? "Unsubmitted / Incomplete"
+                    : ""
+            }</td>
                 </tr>
               `).join("")}
             </tbody>
@@ -603,8 +612,8 @@ const printDiv = () => {
       </body>
     </html>
   `);
-  newWin.document.close();
-};
+        newWin.document.close();
+    };
 
  // 🔒 Disable right-click
   document.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -623,7 +632,6 @@ const printDiv = () => {
       e.stopPropagation();
     }
   });
-
 
 
 
@@ -1064,10 +1072,6 @@ const printDiv = () => {
                                     <MenuItem value="name">Applicant's Name</MenuItem>
                                     <MenuItem value="id">Applicant ID</MenuItem>
                                     <MenuItem value="email">Email Address</MenuItem>
-                                    <MenuItem value="Date Applied">Date Applied</MenuItem>
-                                    <MenuItem value="Date Updated">Date Updated</MenuItem>
-                                    <MenuItem value="Registrar Status">Registrar Status</MenuItem>
-                                    <MenuItem value="SHS GWA">SHS GWA</MenuItem>
                                 </Select>
                             </FormControl>
                             <Typography fontSize={13} sx={{ minWidth: "10px" }}>Sort Order:</Typography>
@@ -1090,13 +1094,12 @@ const printDiv = () => {
                                     onChange={(e) => setSelectedApplicantStatus(e.target.value)}
                                     displayEmpty
                                 >
-                                    <MenuItem value="">All Applicant Status</MenuItem>
-                                    <MenuItem value="Accepted">Accepted</MenuItem>
-                                    <MenuItem value="Rejected">Rejected</MenuItem>
-                                    <MenuItem value="Waiting List">Waiting List</MenuItem>
+                                    <MenuItem value="">Select status</MenuItem>
+                                    <MenuItem value="On process">On process</MenuItem>
                                     <MenuItem value="Documents Verified & ECAT">Documents Verified & ECAT</MenuItem>
+                                    <MenuItem value="Disapproved">Disapproved</MenuItem>
+                                    <MenuItem value="Program Closed">Program Closed</MenuItem>
                                 </Select>
-
                             </FormControl>
                         </Box>
 
@@ -1110,10 +1113,8 @@ const printDiv = () => {
                                     displayEmpty
                                 >
                                     <MenuItem value="">Select status</MenuItem>
-                                    <MenuItem value="Accepted">Accepted</MenuItem>
-                                    <MenuItem value="Rejecte">Rejected</MenuItem>
-                                    <MenuItem value="Waiting List">Waiting List</MenuItem>
-                                    <MenuItem value="Documents Verified & ECAT">Documents Verified & ECAT</MenuItem>
+                                    <MenuItem value="Submitted">Submitted</MenuItem>
+                                    <MenuItem value="Unsubmitted / Incomplete">Unsubmitted / Incomplete</MenuItem>
                                 </Select>
                             </FormControl>
 
@@ -1158,9 +1159,9 @@ const printDiv = () => {
                         <Box display="flex" alignItems="center" gap={1}>
                             <Typography fontSize={13} sx={{ minWidth: "100px" }}>Semester:</Typography>
                             <FormControl size="small" sx={{ width: "200px" }}>
-                                <InputLabel id="semester-label">School Semester</InputLabel>
+                                <InputLabel>School Semester</InputLabel>
                                 <Select
-                                    labelId="semester-label"
+                                    label="School Semester"
                                     value={selectedSchoolSemester}
                                     onChange={handleSchoolSemesterChange}
                                     displayEmpty
@@ -1287,7 +1288,7 @@ const printDiv = () => {
                                 {/* Checkbox */}
                                 <TableCell sx={{ textAlign: "center", border: "1px solid maroon", py: 0.5 }}>
                                     <Checkbox
-                                        disabled
+                                    disabled
                                         checked={person.submitted_documents === 1}
                                         onChange={(e) =>
                                             handleSubmittedDocumentsChange(
@@ -1406,12 +1407,11 @@ const printDiv = () => {
                                         fontSize: "12px",
                                     }}
                                 >
-                                    {person.document_status || "N/A"}
+                                    {person.document_status}
                                 </TableCell>
 
                                 {/* Registrar Status */}
                                 <TableCell
-                                    disabled
                                     sx={{
                                         textAlign: "center",
                                         border: "1px solid maroon",
@@ -1422,7 +1422,7 @@ const printDiv = () => {
                                 >
                                     {person.registrar_status === 1 ? (
                                         <Box
-                                            disabled
+                                       
                                             sx={{
                                                 backgroundColor: "#4CAF50",
                                                 color: "white",
@@ -1435,14 +1435,11 @@ const printDiv = () => {
                                                 margin: "0 auto",
                                             }}
                                         >
-                                            <Typography disabled sx={{ fontWeight: "bold" }}>Submitted</Typography>
+                                            <Typography sx={{ fontWeight: "bold" }}>Submitted</Typography>
                                         </Box>
                                     ) : person.registrar_status === 0 ? (
                                         <Box
-                                            disabled
-
                                             sx={{
-
                                                 backgroundColor: "#F44336",
                                                 color: "white",
                                                 borderRadius: 1,
@@ -1461,8 +1458,7 @@ const printDiv = () => {
                                     ) : (
                                         <Box display="flex" justifyContent="center" gap={1}>
                                             <Button
-
-                                                disabled
+                                            disabled
                                                 key={`submitted-${person.person_id}`}
                                                 variant="contained"
                                                 onClick={() => handleRegistrarStatusChange(person.person_id, 1)}
@@ -1476,7 +1472,7 @@ const printDiv = () => {
                                                 Submitted
                                             </Button>
                                             <Button
-                                                disabled
+                                            disabled
                                                 key={`unsubmitted-${person.person_id}`}
                                                 variant="contained"
                                                 onClick={() => handleRegistrarStatusChange(person.person_id, 0)}
@@ -1514,4 +1510,4 @@ const printDiv = () => {
     );
 };
 
-export default ApplicantList;
+export default AdmissionProcessForCollege;

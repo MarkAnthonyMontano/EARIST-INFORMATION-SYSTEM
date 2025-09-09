@@ -5979,9 +5979,9 @@ app.get("/room_list/:dprtmnt_id", async (req, res) => {
 });
 
 
-app.get("/day_list", async (req, res) => {
+app.get("/schedule-plotting/day_list", async (req, res) => {
   try {
-    const query = "SELECT * FROM room_day_table";
+    const query = "SELECT rdt.id AS day_id, rdt.description AS day_description FROM room_day_table AS rdt";
     const [result] = await db3.query(query);
     res.status(200).send(result);
   } catch (error) {
@@ -6017,16 +6017,38 @@ app.post("/api/check-subject", async (req, res) => {
   }
 });
 
+function timeToMinutes(timeStr) {
+  const [time, modifier] = timeStr.split(" "); // ["7:00", "AM"]
+  let [hours, minutes] = time.split(":").map(Number);
+
+  if (modifier.toUpperCase() === "PM" && hours !== 12) hours += 12;
+  if (modifier.toUpperCase() === "AM" && hours === 12) hours = 0;
+
+  return hours * 60 + minutes;
+}
+
 //CHECK CONFLICT
 app.post("/api/check-conflict", async (req, res) => {
   const { day, start_time, end_time, section_id, school_year_id, prof_id, room_id, subject_id } = req.body;
 
   try {
+
+    const startMinutes = timeToMinutes(start_time);
+    const endMinutes = timeToMinutes(end_time);
+
+    const earliest = timeToMinutes("7:00 AM");
+    const latest = timeToMinutes("9:00 PM");
+
+    if (startMinutes < earliest || endMinutes > latest) {
+      return res.status(409).json({ conflict: true, message: "Time must be between 7:00 AM and 9:00 PM" });
+    }
+
     // Step 1: Check if the section + subject + school year is already assigned to another professor
     const checkSubjectQuery = `
       SELECT * FROM time_table
       WHERE department_section_id = ? AND course_id = ? AND school_year_id = ? AND professor_id != ? 
     `;
+
     const [subjectResult] = await db3.query(checkSubjectQuery, [section_id, subject_id, school_year_id, prof_id]);
 
     if (subjectResult.length > 0) {
@@ -6040,14 +6062,15 @@ app.post("/api/check-conflict", async (req, res) => {
       AND school_year_id = ?
       AND (professor_id = ? OR department_section_id = ? OR department_room_id = ?) 
       AND (
-        (? >= school_time_start AND ? < school_time_end) OR  
-        (? > school_time_start AND ? <= school_time_end) OR  
-        (school_time_start >= ? AND school_time_start < ?) OR  
-        (school_time_end > ? AND school_time_end <= ?)  
+        (? >= school_time_start AND ? <= school_time_end) OR  
+        (? >= school_time_start AND ? <= school_time_end) OR  
+        (school_time_start >= ? AND school_time_start <= ?) OR  
+        (school_time_end >= ? AND school_time_end <= ?) OR
+        (school_time_start = ? AND school_time_end = ?)
       )
     `;
 
-    const [timeResult] = await db3.query(checkTimeQuery, [day, school_year_id, prof_id, section_id, room_id, start_time, start_time, end_time, end_time, start_time, end_time, start_time, end_time]);
+    const [timeResult] = await db3.query(checkTimeQuery, [day, school_year_id, prof_id, section_id, room_id, start_time, start_time, end_time, end_time, start_time, end_time, start_time, end_time, start_time, end_time]);
 
     if (timeResult.length > 0) {
       return res.status(409).json({ conflict: true, message: "Schedule conflict detected! Please choose a different time." });
@@ -6059,8 +6082,46 @@ app.post("/api/check-conflict", async (req, res) => {
     return res.status(500).json({ error: "Internal server error" });
   }
 });
+// ✅ Utility: Convert time string to minutes
+function timeToMinutes(timeStr) {
+  const [time, modifier] = timeStr.split(" ");
+  let [hours, minutes] = time.split(":").map(Number);
 
-// INSERT SCHEDULE
+  if (modifier === "PM" && hours !== 12) {
+    hours += 12;
+  }
+  if (modifier === "AM" && hours === 12) {
+    hours = 0;
+  }
+
+  return hours * 60 + minutes;
+}
+
+// ✅ Check conflict API
+app.post("/api/check-conflict", async (req, res) => {
+  const { start_time, end_time } = req.body;
+
+  try {
+    const startMinutes = timeToMinutes(start_time);
+    const endMinutes = timeToMinutes(end_time);
+
+    const earliest = timeToMinutes("7:00 AM");
+    const latest = timeToMinutes("9:00 PM");
+
+    if (startMinutes < earliest || endMinutes > latest) {
+      return res
+        .status(409)
+        .json({ conflict: true, message: "Time must be between 7:00 AM and 9:00 PM" });
+    }
+
+    return res.status(200).json({ conflict: false, message: "Valid schedule time" });
+  } catch (err) {
+    console.error("Error checking conflict:", err);
+    return res.status(500).json({ error: "Server error while checking conflict" });
+  }
+});
+
+// ✅ Insert schedule API
 app.post("/api/insert-schedule", async (req, res) => {
   const { day, start_time, end_time, section_id, subject_id, prof_id, room_id, school_year_id } = req.body;
 
@@ -6069,7 +6130,8 @@ app.post("/api/insert-schedule", async (req, res) => {
   }
 
   const query = `
-    INSERT INTO time_table (room_day, school_time_start, school_time_end, department_section_id, course_id, professor_id, department_room_id, school_year_id)
+    INSERT INTO time_table 
+    (room_day, school_time_start, school_time_end, department_section_id, course_id, professor_id, department_room_id, school_year_id)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `;
 
@@ -6921,7 +6983,6 @@ app.get('/get_school_year', async (req, res) => {
       FROM year_table ORDER BY current_year;
     `;
     const [result] = await db3.query(query);
-    console.log(result);
     res.json(result);
   } catch (err) {
     console.error("Server Error: ", err);
@@ -6937,7 +6998,6 @@ app.get('/get_school_semester', async (req, res) => {
       FROM semester_table ORDER BY semester_code;
     `;
     const [result] = await db3.query(query);
-    console.log(result);
     res.json(result);
   } catch (err) {
     console.error("Server Error: ", err);
@@ -6961,7 +7021,6 @@ app.get('/active_school_year', async (req, res) => {
   WHERE asyt.astatus = 1
     `;
     const [result] = await db3.query(query);
-    console.log(result);
     res.json(result);
   } catch (err) {
     console.error("Server Error: ", err);
@@ -7948,7 +8007,6 @@ app.get("/api/get/all_schedule/:roomID", async (req, res) => {
       return res.status(404).json({ error: "Schedule not found" });
     }
 
-    console.log(schedule);
     res.json(schedule);
   } catch (error) {
     console.error("Error fetching person:", error);
@@ -8149,7 +8207,7 @@ app.delete("/api/email-templates/:id", async (req, res) => {
   }
 });
 
-app.get("/api/email-templates/:department_id", async (req, res) => {
+app.get("/api/email-templates/active-senders", async (req, res) =>{
   const { department_id } = req.query;
   console.log("Department ID: ", department_id);
 
@@ -8163,6 +8221,57 @@ app.get("/api/email-templates/:department_id", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch active senders" });
+  }
+});
+
+app.get("/api/admin_data/:email", async (req, res) => {
+  const { email } = req.params;  // 👈 now matches your frontend call
+  console.log("Email: ", email);
+
+  try {
+    const [rows] = await db3.query(
+      "SELECT ua.dprtmnt_id FROM user_accounts AS ua WHERE email = ?",
+      [email]
+    );
+
+    if (rows.length > 0) {
+      res.json(rows[0]); // return { dprtmnt_id: "..." }
+    } else {
+      res.status(404).json({ error: "User not found" });
+    }
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch department" });
+  }
+});
+app.get("/api/applied_program/:dprtmnt_id", async (req, res) => {
+  const {dprtmnt_id} = req.params;
+  try {
+    const [rows] = await db3.execute(`
+      SELECT 
+        ct.curriculum_id,
+        pt.program_id,
+        pt.program_code,
+        pt.program_description,
+        pt.major,
+        d.dprtmnt_id,
+        d.dprtmnt_name
+      FROM curriculum_table AS ct
+      INNER JOIN program_table AS pt ON pt.program_id = ct.program_id
+      INNER JOIN dprtmnt_curriculum_table AS dc ON ct.curriculum_id = dc.curriculum_id
+      INNER JOIN dprtmnt_table AS d ON dc.dprtmnt_id = d.dprtmnt_id
+      WHERE d.dprtmnt_id = ?
+
+    `, [dprtmnt_id]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: "No curriculum data found" });
+    }
+
+    res.json(rows);
+  } catch (error) {
+    console.error("Error fetching curriculum data:", error);
+    res.status(500).json({ error: "Database error" });
   }
 });
 
