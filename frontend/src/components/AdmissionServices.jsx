@@ -255,7 +255,8 @@ const AdmissionServices = () => {
                                                 letterSpacing: '1px',
                                                 fontWeight: "normal"
                                             }}>
-                                                Nagtahan, Sampaloc, Manila 1008
+                                                Nagtahan, Sampaloc, Manila 1008<br/>
+                                                Blk. 3 Lot 2, 5 Congressional Rd, General Mariano Alvarez
                                             </div>
 
                                             <br />
@@ -1469,7 +1470,7 @@ const AdmissionServices = () => {
                                             <span style={{ fontWeight: "bold", marginRight: "10px", paddingBottom: "20px" }}>Suggestion on how we can further improve our services (optional):</span>{" "}
 
                                             <br />
-                                            <span style={{ marginTop: "20px", display: "inline-block", borderBottom: "1px solid black", width: "100%", paddingLeft: "10px" }}>
+                                            <span style={{ marginTop: "20px", display: "inline-block", borderBottom: "1px solid black", width: "99%", paddingLeft: "10px" }}>
                                                 {/* Full name goes here */}
                                             </span>
                                         </td>

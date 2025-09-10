@@ -10,28 +10,6 @@ const AdmissionFormProcess = () => {
   const [user, setUser] = useState("");
   const [userRole, setUserRole] = useState("");
 
-  // do not alter
-  useEffect(() => {
-    const storedUser = localStorage.getItem("email");
-    const storedRole = localStorage.getItem("role");
-    const storedID = localStorage.getItem("person_id");
-
-    if (storedUser && storedRole && storedID) {
-      setUser(storedUser);
-      setUserRole(storedRole);
-      setUserID(storedID);
-
-      if (storedRole === "applicant" || storedRole === "registrar") {
-        // ✅ allowed roles
-      } else {
-        window.location.href = "/login";
-      }
-    } else {
-      window.location.href = "/login";
-    }
-  }, []);
-
-
 
   const divToPrintRef = useRef();
 
@@ -209,6 +187,7 @@ const AdmissionFormProcess = () => {
                   <div style={{ marginLeft: "-155px", fontFamily: "Arial", letterSpacing: '2px' }}><b>EULOGIO "AMANG" RODRIGUEZ </b></div>
                   <div style={{ marginLeft: "-155px", fontFamily: "Arial", letterSpacing: '2px' }}><b>INSTITUTE OF SCIENCE AND TECHNOLOGY</b></div>
                   <div style={{ marginLeft: "-155px", fontFamily: "Arial", fontSize: "12px" }}>Nagtahan, Sampaloc, Manila 1008</div>
+                  <div style={{ marginLeft: "-155px", fontFamily: "Arial", fontSize: "12px" }}>Blk. 3 Lot 2, 5 Congressional Rd, General Mariano Alvarez</div>
                   <div style={{ marginLeft: "-155px", fontFamily: "Arial", letterSpacing: '1px', }}><b>OFFICE OF THE ADMISSION SERVICES</b></div>
 
                   <br />
@@ -634,9 +613,6 @@ const AdmissionFormProcess = () => {
                 <td colSpan={10} style={{ fontSize: "12px", fontFamily: "Arial", border: "1px solid black", padding: "8px", textAlign: "left" }}> </td>
               </tr>
 
-              <tr>
-                <td colSpan="40" style={{ height: "20px" }}></td>
-              </tr>
 
 
               <tr>
@@ -704,7 +680,8 @@ const AdmissionFormProcess = () => {
                   <div style={{ marginLeft: "-155px", fontFamily: "Arial", fontSize: "12px", }}>Republic of the Philippines</div>
                   <div style={{ marginLeft: "-155px", fontFamily: "Arial", letterSpacing: '2px' }}><b>EULOGIO "AMANG" RODRIGUEZ </b></div>
                   <div style={{ marginLeft: "-155px", fontFamily: "Arial", letterSpacing: '2px' }}><b>INSTITUTE OF SCIENCE AND TECHNOLOGY</b></div>
-                  <div style={{ marginLeft: "-155px", fontFamily: "Arial", fontSize: "12px" }}>Nagtahan, Sampaloc, Manila 1008</div>
+                    <div style={{ marginLeft: "-155px", fontFamily: "Arial", fontSize: "12px" }}>Nagtahan, Sampaloc, Manila 1008</div>
+                  <div style={{ marginLeft: "-155px", fontFamily: "Arial", fontSize: "12px" }}>Blk. 3 Lot 2, 5 Congressional Rd, General Mariano Alvarez</div>
                   <div style={{ marginLeft: "-155px", fontFamily: "Arial", letterSpacing: '1px', }}><b>OFFICE OF THE ADMISSION SERVICES</b></div>
                   <br />
 
@@ -1130,9 +1107,6 @@ const AdmissionFormProcess = () => {
                 <td colSpan={10} style={{ fontSize: "12px", fontFamily: "Arial", border: "1px solid black", padding: "8px", textAlign: "left" }}> </td>
               </tr>
 
-              <tr>
-                <td colSpan="40" style={{ height: "20px" }}></td>
-              </tr>
 
 
               <tr>

@@ -102,6 +102,11 @@ import AdmissionFormProcess from './components/AdmissionFormProcess';
 import AdmissionServices from './components/AdmissionServices';
 import OfficeOfTheRegistrar from './components/OfficeOfTheRegistrar';
 
+import AdminECATApplicationForm from './components/AdminECATApplicationForm';
+import AdminPersonalDataForm from './components/AdminPersonalDataForm';
+import AdminOfficeOfTheRegistrar from './components/AdminOfficeOfTheRegistrar';
+
+
 import LoginEnrollment from './components/LoginEnrollment';
 
 import ClassList from './components/ClassList';
@@ -336,12 +341,17 @@ function App() {
 
               <Route path="/student_requirements" element={<ProtectedRoute ><StudentRequirements /></ProtectedRoute>} />
 
+          <Route path="/student_requirements" element={<ProtectedRoute ><StudentRequirements /></ProtectedRoute>} />
+          <Route path="/student_requirements" element={<ProtectedRoute ><StudentRequirements /></ProtectedRoute>} />
 
+          <Route path="/admin_ecat_application_form" element={<ProtectedRoute allowedRoles={['registrar', 'applicant']}><AdminECATApplicationForm /></ProtectedRoute>} />
+          <Route path="/admin_personal_data_form" element={<ProtectedRoute allowedRoles={['registrar']} ><AdminPersonalDataForm /></ProtectedRoute>} />
+          <Route path="/admin_office_of_the_registrar" element={<ProtectedRoute allowedRoles={['registrar']}><AdminOfficeOfTheRegistrar /></ProtectedRoute>} />
 
               <Route
                 path="/personal_data_form"
                 element={
-                  <ProtectedRoute allowedRoles={['applicant', 'registrar',]}>
+                  <ProtectedRoute allowedRoles={['applicant']}>
                     <PersonalDataForm />
                   </ProtectedRoute>
                 }
@@ -350,11 +360,12 @@ function App() {
               <Route
                 path="/ecat_application_form"
                 element={
-                  <ProtectedRoute allowedRoles={['applicant', 'registrar']}>
+                  <ProtectedRoute allowedRoles={['applicant']}>
                     <ECATApplicationForm />
                   </ProtectedRoute>
                 }
               />
+
 
               <Route
                 path="/admission_form_process"
@@ -377,7 +388,7 @@ function App() {
               <Route
                 path="/office_of_the_registrar"
                 element={
-                  <ProtectedRoute allowedRoles={['applicant', 'registrar']}>
+                  <ProtectedRoute allowedRoles={['applicant']}>
                     <OfficeOfTheRegistrar />
                   </ProtectedRoute>
                 }

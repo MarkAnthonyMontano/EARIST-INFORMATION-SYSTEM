@@ -86,25 +86,32 @@ const OfficeOfTheRegistrar = () => {
     const queryParams = new URLSearchParams(location.search);
     const queryPersonId = queryParams.get("person_id");
 
-   useEffect(() => {
-    const storedUser = localStorage.getItem("email");
-    const storedRole = localStorage.getItem("role");
-    const storedID = localStorage.getItem("person_id");
+    // do not alter
+    useEffect(() => {
+        const storedUser = localStorage.getItem("email");
+        const storedRole = localStorage.getItem("role");
+        const loggedInPersonId = localStorage.getItem("person_id");
+        const searchedPersonId = sessionStorage.getItem("admin_edit_person_id");
 
-    if (storedUser && storedRole && storedID) {
-      setUser(storedUser);
-      setUserRole(storedRole);
-      setUserID(storedID);
+        if (!storedUser || !storedRole || !loggedInPersonId) {
+            window.location.href = "/login";
+            return;
+        }
 
-      if (storedRole === "applicant" || storedRole === "registrar") {
-        fetchPersonData(storedID);
-      } else {
+        setUser(storedUser);
+        setUserRole(storedRole);
+
+        // Allow Applicant, Admin, SuperAdmin to view ECAT
+        const allowedRoles = ["registrar", "applicant", "superadmin"];
+        if (allowedRoles.includes(storedRole)) {
+            const targetId = searchedPersonId || queryPersonId || loggedInPersonId;
+            setUserID(targetId);
+            fetchPersonData(targetId);
+            return;
+        }
+
         window.location.href = "/login";
-      }
-    } else {
-      window.location.href = "/login";
-    }
-  }, []);
+    }, [queryPersonId]);
 
 
 

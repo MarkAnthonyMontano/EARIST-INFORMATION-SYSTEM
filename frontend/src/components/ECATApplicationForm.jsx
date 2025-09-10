@@ -64,7 +64,7 @@ const ECATApplicationForm = () => {
     guardian_middle_name: "", guardian_ext: "", guardian_nickname: "", guardian_address: "", guardian_contact: "", guardian_email: "",
   });
 
-  
+
   useEffect(() => {
     console.log("Fetched campus:", person.campus);
   }, [person]);
@@ -92,32 +92,27 @@ const ECATApplicationForm = () => {
   const queryParams = new URLSearchParams(location.search);
   const queryPersonId = queryParams.get("person_id");
 
-  // do not alter
   useEffect(() => {
     const storedUser = localStorage.getItem("email");
     const storedRole = localStorage.getItem("role");
-    const loggedInPersonId = localStorage.getItem("person_id");
-    const searchedPersonId = sessionStorage.getItem("admin_edit_person_id");
+    const storedID = localStorage.getItem("person_id");
 
-    if (!storedUser || !storedRole || !loggedInPersonId) {
+    if (storedUser && storedRole && storedID) {
+      setUser(storedUser);
+      setUserRole(storedRole);
+      setUserID(storedID);
+
+      if (storedRole === "applicant" || storedRole === "registrar") {
+        fetchPersonData(storedID);
+      } else {
+        window.location.href = "/login";
+      }
+    } else {
       window.location.href = "/login";
-      return;
     }
+  }, []);
 
-    setUser(storedUser);
-    setUserRole(storedRole);
 
-    // Allow Applicant, Admin, SuperAdmin to view ECAT
-    const allowedRoles = ["registrar", "applicant", "superadmin"];
-    if (allowedRoles.includes(storedRole)) {
-      const targetId = searchedPersonId || queryPersonId || loggedInPersonId;
-      setUserID(targetId);
-      fetchPersonData(targetId);
-      return;
-    }
-
-    window.location.href = "/login";
-  }, [queryPersonId]);
 
 
   const [shortDate, setShortDate] = useState("");
@@ -237,6 +232,24 @@ const ECATApplicationForm = () => {
   }
 
 
+ // 🔒 Disable right-click
+  document.addEventListener('contextmenu', (e) => e.preventDefault());
+
+  // 🔒 Block DevTools shortcuts + Ctrl+P silently
+  document.addEventListener('keydown', (e) => {
+    const isBlockedKey =
+      e.key === 'F12' || // DevTools
+      e.key === 'F11' || // Fullscreen
+      (e.ctrlKey && e.shiftKey && (e.key.toLowerCase() === 'i' || e.key.toLowerCase() === 'j')) || // Ctrl+Shift+I/J
+      (e.ctrlKey && e.key.toLowerCase() === 'u') || // Ctrl+U (View Source)
+      (e.ctrlKey && e.key.toLowerCase() === 'p');   // Ctrl+P (Print)
+
+    if (isBlockedKey) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  });
+
 
   return (
 
@@ -334,7 +347,7 @@ const ECATApplicationForm = () => {
 
                 {/* ✅ Only dynamic campus address */}
                 {campusAddress && (
-                  <div style={{ fontSize: "12px", letterSpacing: "1px", marginLeft: "-60px" }}>
+                  <div style={{ fontSize: "10px", letterSpacing: "1px", marginLeft: "-60px" }}>
                     {campusAddress}
                   </div>
                 )}
@@ -594,7 +607,6 @@ const ECATApplicationForm = () => {
           </tbody>
         </table>
 
-
         <table
 
           style={{
@@ -608,6 +620,7 @@ const ECATApplicationForm = () => {
           }}
         >
           <tbody>
+
 
             <tr>
               <td
@@ -629,27 +642,27 @@ const ECATApplicationForm = () => {
                     fontStyle: 'italic',
                     border: "2px solid black"
                   }}>
-                    {"\u00A0\u00A0"}PERSONAL INFORMATION (Please print your name as written in your NSO/PSA Birth Certificate)
+                    PERSONAL INFORMATION (Please print your name as written in your NSO/PSA Birth Certificate)
                   </b>
 
                 </b>
               </td>
             </tr>
 
+            {/* Spacer */}
             <tr>
-              <td
-                style={{ height: "5px" }} colSpan={40}>
-              </td>
+              <td style={{ height: "5px" }} colSpan={40}></td>
             </tr>
 
-            <tr style={{ fontFamily: "Times New Roman", fontSize: "15px", textAlign: "left" }}>
+            {/* Name */}
+            <tr style={{ fontFamily: "Times New Roman", fontSize: "12px", textAlign: "left" }}>
               <td colSpan={40} style={{ paddingTop: "5px" }}>
-                <span style={{ fontWeight: "bold", marginRight: "10px", marginLeft: "1px" }}>Name:</span>{" "}
+                <b style={{ marginRight: "10px" }}>Name:</b>
                 <span
                   style={{
                     display: "inline-block",
                     borderBottom: "1px solid black",
-                    width: "92%",
+                    width: "93.75%",
                     verticalAlign: "bottom",
                   }}
                 >
@@ -662,9 +675,17 @@ const ECATApplicationForm = () => {
               </td>
             </tr>
 
+            {/* Labels under Name */}
             <tr>
               <td colSpan={40} style={{ fontFamily: "Times New Roman", fontSize: "14px", paddingTop: "2px" }}>
-                <div style={{ width: "88%", marginLeft: "100px", display: "flex", justifyContent: "space-between" }}>
+                <div
+                  style={{
+                    width: "92%",
+                    marginLeft: "60px",
+                    display: "flex",
+                    justifyContent: "space-between",
+                  }}
+                >
                   <span style={{ width: "20%", textAlign: "center" }}>Last Name</span>
                   <span style={{ width: "20%", textAlign: "center" }}>Given Name</span>
                   <span style={{ width: "20%", textAlign: "center" }}>Middle Name</span>
@@ -674,130 +695,63 @@ const ECATApplicationForm = () => {
               </td>
             </tr>
 
-
-            <tr style={{ fontFamily: "Times New Roman", fontSize: "15px", textAlign: "left" }}>
+            <tr style={{ fontFamily: "Times New Roman", fontSize: "12px", textAlign: "left" }}>
               <td colSpan={40}>
-                <b>Gender:</b>{" "}
-                <span
-                  style={{
-                    borderBottom: "1px solid black",
-                    display: "inline-block",
-                    width: "160px",
-                    marginLeft: "10px",
-                    fontFamily: "Times New Roman",
-                    fontSize: "14px",
-                    textAlign: "Center"
-                  }}
-                >
-                  {person.gender === 0 ? "Male" : person.gender === 1 ? "Female" : ""}
-                </span>{" "}
-                <b>Civil Status:</b>{" "}
-                <span
-                  style={{
-                    borderBottom: "1px solid black",
-                    display: "inline-block",
-                    width: "160px",
-                    marginLeft: "10px",
-                    fontFamily: "Times New Roman",
-                    fontSize: "14px",
-                    textAlign: "Center"
-                  }}
-                >
-                  {person.civilStatus}
-                </span>{" "}
-                <b>Date of Birth:</b>{" "}
-                <span
-                  style={{
-                    borderBottom: "1px solid black",
-                    display: "inline-block",
-                    width: "170px",
-                    marginLeft: "10px",
-                    fontFamily: "Times New Roman",
-                    fontSize: "14px",
-                    textAlign: "Center"
-                  }}
-                >
-                  {person.birthOfDate &&
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "center" }}>
+                  <b>Gender:</b>
+                  <span style={{ flex: 1, borderBottom: "1px solid black", minWidth: "115px" }}>  {person.gender === 0 ? "Male" : person.gender === 1 ? "Female" : ""}</span>
+
+                  <b>Civil Status:</b>
+                  <span style={{ flex: 1, borderBottom: "1px solid black", minWidth: "115px" }}>   {person.civilStatus}</span>
+
+                  <b>Date of Birth:</b>
+                  <span style={{ flex: 1, borderBottom: "1px solid black", minWidth: "115px" }}>    {person.birthOfDate &&
                     new Date(person.birthOfDate).toLocaleDateString("en-US", {
                       year: "numeric",
                       month: "long",
                       day: "numeric",
-                    })}
-                </span>
+                    })}</span>
+                </div>
               </td>
             </tr>
 
-            <tr style={{ fontFamily: "Times New Roman", fontSize: "15px", textAlign: "left" }}>
+            <tr style={{ fontFamily: "Times New Roman", fontSize: "12px", textAlign: "left" }}>
               <td colSpan={40}>
-                <b>Place of Birth:</b>{" "}
-                <span
-                  style={{
-                    borderBottom: "1px solid black",
-                    display: "inline-block",
-                    width: "160px",
-                    marginLeft: "10px",
-                    fontFamily: "Times New Roman",
-                    fontSize: "14px",
-                    textAlign: "Center"
-                  }}
-                >
-                  {person.birthPlace}
-                </span>{" "}
-                <b>Nationality:</b>{" "}
-                <span
-                  style={{
-                    borderBottom: "1px solid black",
-                    display: "inline-block",
-                    width: "164px",
-                    marginLeft: "10px",
-                    fontFamily: "Times New Roman",
-                    fontSize: "14px",
-                    textAlign: "Center"
-                  }}
-                >
-                  {person.citizenship}
-                </span>{" "}
-                <b>Religion:</b>{" "}
-                <span
-                  style={{
-                    borderBottom: "1px solid black",
-                    display: "inline-block",
-                    width: "160px",
-                    marginLeft: "10px",
-                    fontFamily: "Times New Roman",
-                    fontSize: "14px",
-                    textAlign: "Center"
-                  }}
-                >
-                  {person.religion}
-                </span>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "center" }}>
+                  <b>Place of Birth:</b>
+                  <span style={{ flex: 1, borderBottom: "1px solid black", minWidth: "115px" }}> {person.birthPlace}</span>
+
+                  <b>Citizenship:</b>
+                  <span style={{ flex: 1, borderBottom: "1px solid black", minWidth: "115px" }}> {person.citizenship}</span>
+
+                  <b>Religion:</b>
+                  <span style={{ flex: 1, borderBottom: "1px solid black", minWidth: "115px" }}>  {person.religion}</span>
+                </div>
               </td>
             </tr>
 
-            <tr style={{ fontFamily: "Times New Roman", fontSize: "15px", textAlign: "left" }}>
+
+            {/* Contact */}
+            <tr style={{ fontFamily: "Times New Roman", fontSize: "12px", textAlign: "left" }}>
               <td colSpan={40}>
-                <b>Cellphone Number:</b>{" "}
+                <b>Cellphone Number:</b>
                 <span
                   style={{
                     borderBottom: "1px solid black",
                     display: "inline-block",
-                    width: "210px",
+                    width: "231px",
                     marginLeft: "10px",
-                    fontFamily: "Times New Roman",
-                    fontSize: "14px",
                   }}
                 >
                   {person.cellphoneNumber}
-                </span>{" "}
-                <b>Email Address:</b>{" "}
+                </span>
+                <b style={{ marginLeft: "10px" }}>Email Address:</b>
                 <span
                   style={{
                     borderBottom: "1px solid black",
                     display: "inline-block",
-                    width: "294px",
+                    width: "303px",
                     marginLeft: "10px",
-                    fontFamily: "Times New Roman",
-                    fontSize: "14px",
                   }}
                 >
                   {person.emailAddress}
@@ -805,60 +759,51 @@ const ECATApplicationForm = () => {
               </td>
             </tr>
 
-            <tr>
-              <td colSpan={40} style={{ fontFamily: "Times New Roman", fontSize: "15px", }}>
-                <span style={{ fontWeight: "bold", marginRight: "10px", marginLeft: "-5px" }}>Permanent Address:</span>{" "}
+            {/* Permanent Address */}
+            <tr style={{ fontFamily: "Times New Roman", fontSize: "12px", textAlign: "left" }}>
+              <td colSpan={40}>
+                <b style={{ marginRight: "10px" }}>Permanent Address:</b>
                 <span
                   style={{
                     display: "inline-block",
                     borderBottom: "1px solid black",
-                    width: "80.5%",
+                    width: "83%",
                     verticalAlign: "bottom",
                   }}
                 >
-                  <span style={{ display: "inline-block", width: "30%", textAlign: "center", fontSize: "12px" }}>
-                    {person.presentStreet}
-                  </span>
-                  <span style={{ display: "inline-block", width: "10%", textAlign: "center", fontSize: "12px" }}>
-                    {person.presentBarangay}
-                  </span>
-                  <span style={{ display: "inline-block", width: "20%", textAlign: "center", fontSize: "12px" }}>
-                    {person.presentMunicipality}
-                  </span>
-                  <span style={{ display: "inline-block", width: "30%", textAlign: "center", fontSize: "12px" }}>
-                    {person.presentProvince}
-                  </span>
-                  <span style={{ display: "inline-block", width: "10%", textAlign: "center", fontSize: "12px" }}>
-                    {person.presentZipCode}
-                  </span>
+                  <span style={{ display: "inline-block", width: "30%", textAlign: "center", fontSize: "12px" }}>{person.presentStreet}</span>
+                  <span style={{ display: "inline-block", width: "10%", textAlign: "center", fontSize: "12px" }}>{person.presentBarangay}</span>
+                  <span style={{ display: "inline-block", width: "20%", textAlign: "center", fontSize: "12px" }}>{person.presentMunicipality}</span>
+                  <span style={{ display: "inline-block", width: "30%", textAlign: "center", fontSize: "12px" }}>{person.presentProvince}</span>
+                  <span style={{ display: "inline-block", width: "10%", textAlign: "center", fontSize: "12px" }}>{person.presentZipCode}</span>
                 </span>
               </td>
             </tr>
 
+            {/* Address Labels */}
             <tr>
               <td colSpan={40} style={{ fontFamily: "Times New Roman", fontSize: "14px", paddingTop: "2px" }}>
                 <div
                   style={{
                     display: "flex",
                     justifyContent: "space-between",
-                    width: "92%",
-                    marginLeft: "60px", // aligns label with start of 92% span
+                    width: "93.75%",
+                    marginLeft: "60px",
                   }}
                 >
-                  <span style={{ width: "30%", textAlign: "center", }}>No. Street</span>
-                  <span style={{ width: "10%", textAlign: "center", }}>Barangay</span>
-                  <span style={{ width: "20%", textAlign: "center", }}>City</span>
-                  <span style={{ width: "30%", textAlign: "center", }}>Province</span>
-                  <span style={{ width: "10%", textAlign: "center", }}>Zipcode</span>
+                  <span style={{ width: "30%", textAlign: "center" }}>No. Street</span>
+                  <span style={{ width: "10%", textAlign: "center" }}>Barangay</span>
+                  <span style={{ width: "20%", textAlign: "center" }}>City</span>
+                  <span style={{ width: "30%", textAlign: "center" }}>Province</span>
+                  <span style={{ width: "10%", textAlign: "center" }}>Zipcode</span>
                 </div>
               </td>
             </tr>
 
-
-
-            <tr style={{ fontFamily: "Times New Roman", fontSize: "15px", textAlign: "left" }}>
+            {/* Residence */}
+            <tr style={{ fontFamily: "Times New Roman", fontSize: "12px", textAlign: "left" }}>
               <td colSpan={40}>
-                <b style={{ marginRight: "50px" }}>Residence:</b>{" "}
+                <b style={{ marginRight: "50px" }}>Residence:</b>
                 <span style={{ marginRight: "20px" }}>( ) With Parents</span>
                 <span style={{ marginRight: "20px" }}>( ) With Relatives</span>
                 <span style={{ marginRight: "20px" }}>( ) With Guardian</span>
@@ -866,7 +811,8 @@ const ECATApplicationForm = () => {
               </td>
             </tr>
 
-            <tr style={{ fontFamily: "Times New Roman", fontSize: "15px", textAlign: "left" }}>
+            {/* Indigenous Group */}
+            <tr style={{ fontFamily: "Times New Roman", fontSize: "12px", textAlign: "left" }}>
               <td colSpan={40}>
                 <b>Are you a member of any indigenous group?</b>{" "}
                 {person.tribeEthnicGroup === "Others" ? (
@@ -877,11 +823,9 @@ const ECATApplicationForm = () => {
                         borderBottom: "1px solid black",
                         display: "inline-block",
                         width: "200px",
-                        marginLeft: "10px"
+                        marginLeft: "10px",
                       }}
-                    >
-
-                    </span>
+                    ></span>
                   </>
                 ) : (
                   <>
@@ -891,15 +835,13 @@ const ECATApplicationForm = () => {
                         borderBottom: "1px solid black",
                         display: "inline-block",
                         width: "200px",
-                        marginLeft: "10px"
+                        marginLeft: "10px",
                       }}
                     ></span>
                   </>
                 )}
               </td>
             </tr>
-
-
           </tbody>
         </table>
 
@@ -960,241 +902,127 @@ const ECATApplicationForm = () => {
               </td>
             </tr>
 
-            <tr style={{ fontFamily: "Times New Roman", fontSize: "15px", textAlign: "left" }}>
+            {/* ================= FATHER ================= */}
+            <tr style={{ fontFamily: "Times New Roman", fontSize: "12px", textAlign: "left" }}>
               <td colSpan={40}>
-                <b>Father's Name:</b>
-                <span
-                  style={{
-                    borderBottom: "1px solid black",
-                    display: "inline-block",
-                    width: "360px",
-                    marginLeft: "10px",
-                    marginRight: "15px",
-                    fontFamily: "times new roman",
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <b style={{ whiteSpace: "nowrap" }}>Father's Name:</b>
+                  <span
+                    style={{
+                      flex: 1,
+                      borderBottom: "1px solid black",
+                      minHeight: "18px",
+                      fontFamily: "Times New Roman",
+                      fontSize: "14px",
+                    }}
+                  >
+                    {`${person.father_given_name || ""} ${person.father_middle_name || ""} ${person.father_family_name || ""} ${person.father_ext || ""}`.toUpperCase()}
+                  </span>
+                  <span style={{ fontSize: "14px" }}>
+                    ({person.father_deceased === "1" ? " " : "✓"}) Living&nbsp;&nbsp;
+                    ({person.father_deceased === "1" ? "✓" : " "}) Deceased
+                  </span>
+                </div>
+              </td>
+            </tr>
 
-                    fontSize: "14px",
+            <tr style={{ fontFamily: "Times New Roman", fontSize: "12px", textAlign: "left" }}>
+              <td colSpan={40}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "center" }}>
+                  <b>Occupation:</b>
+                  <span style={{ flex: 1, borderBottom: "1px solid black", minWidth: "120px" }}>{person.father_occupation}</span>
 
-                  }}
-                >
-                  {`${person.father_given_name || ""} ${person.father_middle_name || ""} ${person.father_family_name || ""} ${person.father_ext || ""}`.toUpperCase()}
+                  <b>Monthly Income:</b>
+                  <span style={{ flex: 1, borderBottom: "1px solid black", minWidth: "120px" }}>{person.father_income}</span>
 
-                </span>
-                <span style={{ fontWeight: "normal", fontSize: "14px" }}>
-                  ({person.father_deceased === "1" ? " " : "✓"}) Living&nbsp;&nbsp;
-                  ({person.father_deceased === "1" ? "✓" : " "}) Deceased
-                </span>
+                  <b>Contact No:</b>
+                  <span style={{ flex: 1, borderBottom: "1px solid black", minWidth: "120px" }}>{person.father_contact}</span>
+                </div>
+              </td>
+            </tr>
 
+            {/* ================= MOTHER ================= */}
+            <tr style={{ fontFamily: "Times New Roman", fontSize: "12px", textAlign: "left" }}>
+              <td colSpan={40}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <b style={{ whiteSpace: "nowrap" }}>Mother's Name:</b>
+                  <span
+                    style={{
+                      flex: 1,
+                      borderBottom: "1px solid black",
+                      minHeight: "18px",
+                      fontFamily: "Times New Roman",
+                      fontSize: "14px",
+                    }}
+                  >
+                    {`${person.mother_given_name || ""} ${person.mother_middle_name || ""} ${person.mother_family_name || ""}`.toUpperCase()}
+                  </span>
+                  <span style={{ fontSize: "14px" }}>
+                    ({person.mother_deceased === "Yes" ? " " : "✓"}) Living&nbsp;&nbsp;
+                    ({person.mother_deceased === "Yes" ? "✓" : " "}) Deceased
+                  </span>
+                </div>
+              </td>
+            </tr>
 
+            <tr style={{ fontFamily: "Times New Roman", fontSize: "12px", textAlign: "left" }}>
+              <td colSpan={40}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "center" }}>
+                  <b>Occupation:</b>
+                  <span style={{ flex: 1, borderBottom: "1px solid black", minWidth: "120px" }}>{person.mother_occupation}</span>
+
+                  <b>Monthly Income:</b>
+                  <span style={{ flex: 1, borderBottom: "1px solid black", minWidth: "120px" }}>{person.mother_income}</span>
+
+                  <b>Contact No:</b>
+                  <span style={{ flex: 1, borderBottom: "1px solid black", minWidth: "120px" }}>{person.mother_contact}</span>
+                </div>
+              </td>
+            </tr>
+
+            {/* ================= GUARDIAN ================= */}
+            <tr style={{ fontFamily: "Times New Roman", fontSize: "12px", textAlign: "left" }}>
+              <td colSpan={40}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                  <b>Guardian's Name:</b>
+                  <span
+                    style={{
+                      flex: 1,
+                      borderBottom: "1px solid black",
+                      minHeight: "18px",
+                      fontFamily: "Times New Roman",
+                      fontSize: "14px",
+                    }}
+                  >
+                    {`${person.guardian_given_name || ""} ${person.guardian_middle_name || ""} ${person.guardian_family_name || ""} ${person.guardian_ext || ""}`.toUpperCase()}
+                  </span>
+
+                  <b>Relationship to the Applicant:</b>
+                  <span style={{ flex: 1, borderBottom: "1px solid black", minWidth: "150px" }}>
+                    Guardian
+                  </span>
+                </div>
+              </td>
+            </tr>
+
+            <tr style={{ fontFamily: "Times New Roman", fontSize: "12px", textAlign: "left" }}>
+              <td colSpan={40}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "center" }}>
+                  <b>Occupation:</b>
+                  <span style={{ flex: 1, borderBottom: "1px solid black", minWidth: "120px" }}></span>
+
+                  <b>Monthly Income:</b>
+                  <span style={{ flex: 1, borderBottom: "1px solid black", minWidth: "120px" }}>0</span>
+
+                  <b>Contact No:</b>
+                  <span style={{ flex: 1, borderBottom: "1px solid black", minWidth: "120px" }}>{person.guardian_contact}</span>
+                </div>
               </td>
             </tr>
 
 
 
 
-            <tr style={{ fontFamily: "Times New Roman", fontSize: "15px", textAlign: "left" }}>
-              <td colSpan={40}>
-                <b>Occupation:</b>{" "}
-                <span
-                  style={{
-                    borderBottom: "1px solid black",
-                    display: "inline-block",
-                    width: "150px",
-                    marginLeft: "10px",
-                    fontFamily: "times new roman",
-
-
-                    fontSize: "14px"
-                  }}
-                >
-                  {person.father_occupation}
-                </span>{" "}
-                <b>Monthly Income:</b>{" "}
-                <span
-                  style={{
-                    borderBottom: "1px solid black",
-                    display: "inline-block",
-                    width: "150px",
-                    marginLeft: "10px",
-                    fontFamily: "times new roman",
-
-                    fontSize: "14px"
-                  }}
-                >
-                  {person.father_income}
-                </span>{" "}
-                <b>Contact No:</b>{" "}
-                <span
-                  style={{
-                    borderBottom: "1px solid black",
-                    display: "inline-block",
-                    width: "145px",
-                    marginLeft: "10px",
-                    fontFamily: "times new roman",
-
-                    fontSize: "14px"
-                  }}
-                >
-                  {person.father_contact}
-                </span>
-              </td>
-            </tr>
-
-            <tr style={{ fontFamily: "Times New Roman", fontSize: "15px", textAlign: "left" }}>
-              <td colSpan={40}>
-                <b>Mother's Name:</b>{" "}
-                <span
-                  style={{
-                    borderBottom: "1px solid black",
-                    display: "inline-block",
-                    width: "350px",
-                    marginLeft: "10px",
-                    marginRight: "15px",
-                    fontFamily: "times new roman",
-                    fontSize: "14px",
-
-                  }}
-                >
-                  {`${person.mother_given_name || ""} ${person.mother_middle_name || ""} ${person.mother_family_name || ""}`.toUpperCase()}
-
-                </span>{" "}
-                <span style={{ fontWeight: "normal", fontSize: "14px" }}>
-                  ({person.mother_deceased === "Yes" ? " " : "✓"}) Living&nbsp;&nbsp;
-                  ({person.mother_deceased === "Yes" ? "✓" : " "}) Deceased
-                </span>
-
-              </td>
-            </tr>
-
-            <tr style={{ fontFamily: "Times New Roman", fontSize: "15px", textAlign: "left" }}>
-              <td colSpan={40}>
-                <b>Occupation:</b>{" "}
-                <span
-                  style={{
-                    borderBottom: "1px solid black",
-                    display: "inline-block",
-                    width: "150px",
-                    marginLeft: "10px",
-                    fontFamily: "Times New Roman",
-                    fontSize: "14px"
-                  }}
-                >
-                  {person.mother_occupation}
-                </span>{" "}
-                <b>Monthly Income:</b>{" "}
-                <span
-                  style={{
-                    borderBottom: "1px solid black",
-                    display: "inline-block",
-                    width: "150px",
-                    marginLeft: "10px",
-                    fontFamily: "Times New Roman",
-                    fontSize: "14px"
-                  }}
-                >
-                  {person.mother_income}
-                </span>{" "}
-                <b>Contact No:</b>{" "}
-                <span
-                  style={{
-                    borderBottom: "1px solid black",
-                    display: "inline-block",
-                    width: "145px",
-                    marginLeft: "10px",
-                    fontFamily: "Times New Roman",
-                    fontSize: "14px"
-                  }}
-                >
-                  {person.mother_contact}
-                </span>
-              </td>
-            </tr>
-
-            <tr style={{ fontFamily: "Times New Roman", fontSize: "15px", textAlign: "left" }}>
-              <td colSpan={40}>
-                <b>Guardian's Name:</b>{" "}
-                <span
-                  style={{
-                    borderBottom: "1px solid black",
-                    display: "inline-block",
-                    width: "200px",
-                    marginLeft: "10px",
-
-                    fontSize: "14px",
-                    fontFamily: "Times New Roman"
-                  }}
-                >
-                  {`${person.guardian_given_name || ""} ${person.guardian_middle_name || ""} ${person.guardian_family_name || ""} ${person.guardian_ext || ""}`.toUpperCase()}
-
-                </span>{" "}
-                <b>Relationship to the Applicant:</b>{" "}
-                <span
-                  style={{
-                    borderBottom: "1px solid black",
-                    display: "inline-block",
-                    width: "220px",
-                    marginLeft: "10px",
-
-                    fontSize: "14px",
-                    fontFamily: "Times New Roman"
-                  }}
-                >
-                  Guardian
-                </span>
-              </td>
-            </tr>
-
-            <tr style={{ fontFamily: "Times New Roman", fontSize: "15px", textAlign: "left" }}>
-              <td colSpan={40}>
-                <b>Occupation:</b>{" "}
-                <span
-                  style={{
-                    borderBottom: "1px solid black",
-                    display: "inline-block",
-                    width: "150px",
-                    marginLeft: "10px",
-                  }}
-                ></span>{" "}
-                <b>Monthly Income:</b>{" "}
-                <span
-                  style={{
-                    borderBottom: "1px solid black",
-                    display: "inline-block",
-                    width: "150px",
-                    marginLeft: "10px",
-                  }}
-                >
-                  0
-                </span>{" "}
-                <b>Contact No:</b>{" "}
-                <span
-                  style={{
-                    borderBottom: "1px solid black",
-                    display: "inline-block",
-                    width: "145px",
-                    marginLeft: "10px",
-                  }}
-                >
-                  {person.guardian_contact}
-                </span>
-              </td>
-            </tr>
-
-
-
-
-          </tbody>
-        </table>
-
-        {/* ✅ Replace invalid <tr> with valid spacer table */}
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <tbody>
-            <tr>
-              <td colSpan={40} style={{
-                height: "10px",
-                padding: 0,
-                border: "none"
-              }}></td>
-            </tr>
           </tbody>
         </table>
 
@@ -1224,7 +1052,7 @@ const ECATApplicationForm = () => {
                 style={{
                   height: "0.2in",
                   fontSize: "72.5%",
-
+                  width: "8in",
                   color: "white",
                 }}
               >
@@ -1253,21 +1081,32 @@ const ECATApplicationForm = () => {
 
 
             {/* Line 1 */}
-            <tr style={{ fontFamily: "Times New Roman", fontSize: "15px", textAlign: "left" }}>
+            <tr style={{ fontFamily: "Times New Roman", fontSize: "12px", textAlign: "left" }}>
               <td colSpan={40}>
                 <b>Last school attended or where you are currently completing Secondary Level Education:</b>
               </td>
             </tr>
 
             {/* Line 2 */}
-            <tr style={{ fontFamily: "Times New Roman", fontSize: "15px", textAlign: "left" }}>
+            <tr style={{ fontFamily: "Times New Roman", fontSize: "12px", textAlign: "left" }}>
               <td colSpan={40}>
-                <b>Name of School:</b>{" "}
-                <span style={{ borderBottom: "1px solid black", display: "inline-block", width: "653px" }}></span>
+                <div style={{ display: "flex", alignItems: "center" }}>
+                  <b style={{ whiteSpace: "nowrap", marginRight: "8px" }}>Name of School:</b>
+                  <span
+                    style={{
+                      flex: 1,
+                      borderBottom: "1px solid black",
+                      minHeight: "18px", // ensures visible line even if no text
+                    }}
+                  >
+
+                  </span>
+                </div>
               </td>
             </tr>
 
-            <tr style={{ fontFamily: "Times New Roman", fontSize: "15px", textAlign: "left" }}>
+
+            <tr style={{ fontFamily: "Times New Roman", fontSize: "12px", textAlign: "left" }}>
               {/* Complete Address */}
               <td colSpan={20}>
                 <b>Complete Address:</b>{" "}
@@ -1275,7 +1114,7 @@ const ECATApplicationForm = () => {
                   style={{
                     display: "inline-block",
                     borderBottom: "1px solid black",
-                    width: "225px",
+                    width: "60%",
                     position: "relative",
                     paddingBottom: "5px",
                     marginLeft: "10px",
@@ -1294,17 +1133,17 @@ const ECATApplicationForm = () => {
                 </span>
               </td>
 
-              {/* LRN */}
+
               <td colSpan={20}>
                 <b>Learner's Reference No.:</b>{" "}
                 <span
                   style={{
                     display: "inline-block",
                     borderBottom: "1px solid black",
-                    width: "53%",
+                    width: "61%",
                     position: "relative",
                     paddingBottom: "10px",
-                    marginLeft: "10px",
+
                   }}
                 >
                   <div
@@ -1323,13 +1162,13 @@ const ECATApplicationForm = () => {
 
 
             {/* Line 4 */}
-            <tr style={{ fontFamily: "Times New Roman", fontSize: "15px", textAlign: "left" }}>
+            <tr style={{ fontFamily: "Times New Roman", fontSize: "12px", textAlign: "left" }}>
               <td colSpan={40}>
                 <b>Do you have any PHYSICAL DISABILITY OR CONDITION that requires special attention or</b>
               </td>
             </tr>
 
-            <tr style={{ fontFamily: "Times New Roman", fontSize: "15px", textAlign: "left" }}>
+            <tr style={{ fontFamily: "Times New Roman", fontSize: "12px", textAlign: "left" }}>
               <td colSpan={40}>
                 <b>would make it difficult for you to take a regular test?</b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
                 {[
@@ -1382,7 +1221,7 @@ const ECATApplicationForm = () => {
             margin: "0 auto",
             textAlign: "center",
             tableLayout: "fixed",
-            marginTop: "20px"
+
           }}
         >
           <tbody>

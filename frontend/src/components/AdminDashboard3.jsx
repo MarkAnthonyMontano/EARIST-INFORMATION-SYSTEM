@@ -240,10 +240,10 @@ const AdminDashboard3 = () => {
 
 
   const links = [
-    { to: `/ecat_application_form?person_id=${userID}`, label: "ECAT Application Form" },
+  { to: `/admin_ecat_application_form?person_id=${userID}`, label: "ECAT Application Form" },
     { to: `/admission_form_process?person_id=${userID}`, label: "Admission Form Process" },
-    { to: `/personal_data_form?person_id=${userID}`, label: "Personal Data Form" },
-    { to: `/office_of_the_registrar?person_id=${userID}`, label: "Application For EARIST College Admission" },
+    { to: `/admin_personal_data_form?person_id=${userID}`, label: "Personal Data Form" },
+    { to: `/admin_office_of_the_registrar?person_id=${userID}`, label: "Application For EARIST College Admission" },
     { to: `/admission_services?person_id=${userID}`, label: "Application/Student Satisfactory Survey" },
     { to: `/admission_services?person_id=${userID}`, label: "Examination Permit" },
   ];
