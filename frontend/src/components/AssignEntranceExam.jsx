@@ -2,8 +2,12 @@ import React, { useState, useEffect } from "react";
 import axios from "axios";
 import { Box, Button, Grid, MenuItem, TextField, Typography, Paper } from "@mui/material";
 import { Link, useLocation } from "react-router-dom";
-
 import { useNavigate } from "react-router-dom";
+import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
+import { DatePicker } from "@mui/x-date-pickers/DatePicker";
+import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
+import dayjs from "dayjs";
+
 
 const AssignEntranceExam = () => {
   const tabs = [
@@ -219,25 +223,18 @@ const AssignEntranceExam = () => {
             <Grid container spacing={1}>
               {/* Day */}
               <Grid item xs={12}>
-                <Typography fontWeight={500}>
-                  Day:
-                </Typography>
-                <TextField
-                  select
-                  fullWidth
-                  value={day}
-                  onChange={(e) => setDay(e.target.value)}
-                  required
-                  variant="outlined"
-                >
-                  {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map(
-                    (d) => (
-                      <MenuItem key={d} value={d}>
-                        {d}
-                      </MenuItem>
-                    )
-                  )}
-                </TextField>
+                <Typography fontWeight={500}>Exam Date:</Typography>
+                <LocalizationProvider dateAdapter={AdapterDayjs}>
+                  <DatePicker
+                    value={day ? dayjs(day) : null}
+                    onChange={(newValue) => {
+                      // Save as MM/DD/YYYY for backend
+                      const formatted = newValue ? dayjs(newValue).format("MM/DD/YYYY") : "";
+                      setDay(formatted);
+                    }}
+                    slotProps={{ textField: { fullWidth: true, required: true } }}
+                  />
+                </LocalizationProvider>
               </Grid>
 
               {/* Building */}

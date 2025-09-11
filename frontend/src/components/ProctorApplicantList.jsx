@@ -356,8 +356,8 @@ th {
           <span><b>Proctor:</b> {proctor.proctor || "N/A"}</span>
           <span><b>Building:</b> {proctor.building_description || "N/A"}</span>
           <span><b>Room:</b> {proctor.room_description || "N/A"}</span>
-          <span>
-            <b>Schedule:</b> {proctor.day_description || ""} |{" "}
+          <span><b>Schedule:</b> {proctor.day_description || ""} |{" "}</span>
+          <span><b>Time: </b> 
             {proctor.start_time
               ? new Date(`1970-01-01T${proctor.start_time}`).toLocaleTimeString("en-US", {
                 hour: "numeric",

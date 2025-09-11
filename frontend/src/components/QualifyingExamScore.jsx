@@ -52,9 +52,6 @@ const QualifyingExamScore = () => {
         navigate(`/admin_dashboard1?person_id=${person_id}`);
     };
 
-
-
-
     const tabs = [
         { label: "Applicant List", to: "/applicant_list", icon: <ListAltIcon /> },
         { label: "Applicant Form", to: "/admin_dashboard1", icon: <PersonIcon /> },
@@ -93,7 +90,7 @@ const QualifyingExamScore = () => {
     const [userID, setUserID] = useState("");
     const [user, setUser] = useState("");
     const [userRole, setUserRole] = useState("");
-
+    const [adminData, setAdminData] = useState({ dprtmnt_id: "" });
 
     useEffect(() => {
         const storedUser = localStorage.getItem("email");
@@ -119,7 +116,6 @@ const QualifyingExamScore = () => {
 
         window.location.href = "/login";
     }, [queryPersonId]);
-
 
     const [error, setError] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
@@ -155,22 +151,36 @@ const QualifyingExamScore = () => {
         fetchApplicants();
     }, []);
 
+    const fetchPersonData = async () => {
+        try {
+            const res = await axios.get(`http://localhost:5000/api/admin_data/${user}`);
+            setAdminData(res.data); // { dprtmnt_id: "..." }
+        } catch (err) {
+            console.error("Error fetching admin data:", err);
+        }
+    };
+
+    useEffect(() => {
+        if (user) {
+            fetchPersonData();
+        }
+    }, [user]);
 
     const [curriculumOptions, setCurriculumOptions] = useState([]);
 
     useEffect(() => {
+        if (!adminData.dprtmnt_id) return;
         const fetchCurriculums = async () => {
             try {
-                const response = await axios.get("http://localhost:5000/api/applied_program");
-                console.log("✅ curriculumOptions:", response.data); // <--- add this
+                const response = await axios.get(`http://localhost:5000/api/applied_program/${adminData.dprtmnt_id}`);
+                console.log("✅ curriculumOptions:", response.data); 
                 setCurriculumOptions(response.data);
             } catch (error) {
                 console.error("Error fetching curriculum options:", error);
             }
         };
-
         fetchCurriculums();
-    }, []);
+    }, [adminData.dprtmnt_id]);
 
     const [selectedApplicantStatus, setSelectedApplicantStatus] = useState("");
     const [sortBy, setSortBy] = useState("name");
@@ -345,17 +355,25 @@ const QualifyingExamScore = () => {
     }
 
     useEffect(() => {
+        if (!adminData.dprtmnt_id) return;
         const fetchDepartments = async () => {
             try {
-                const response = await axios.get("http://localhost:5000/api/departments"); // ✅ Update if needed
+                const response = await axios.get(`http://localhost:5000/api/departments/${adminData.dprtmnt_id}`); // ✅ Update if needed
                 setDepartment(response.data);
             } catch (error) {
                 console.error("Error fetching departments:", error);
             }
         };
-
         fetchDepartments();
-    }, []);
+    }, [adminData.dprtmnt_id]);
+
+    useEffect(() => {
+        if (department.length > 0 && !selectedDepartmentFilter) {
+            const firstDept = department[0].dprtmnt_name;
+            setSelectedDepartmentFilter(firstDept);
+            handleDepartmentChange(firstDept); // if you also want to trigger it
+        }
+    }, [department, selectedDepartmentFilter]);
 
 
     useEffect(() => {
@@ -1204,7 +1222,6 @@ const QualifyingExamScore = () => {
                                     }}
                                     displayEmpty
                                 >
-                                    <MenuItem value="">All Departments</MenuItem>
                                     {department.map((dep) => (
                                         <MenuItem key={dep.dprtmnt_id} value={dep.dprtmnt_name}>
                                             {dep.dprtmnt_name} ({dep.dprtmnt_code})

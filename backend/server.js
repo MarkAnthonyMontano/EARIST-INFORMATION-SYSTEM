@@ -233,6 +233,11 @@ app.post("/register", async (req, res) => {
       [person_id, applicant_number, 0, 0, 0, 0, 0, 0, 0, 0]
     );
 
+    await db.query(
+      "INSERT INTO interview_applicants (schedule_id, applicant_id, email_sent) VALUES (?, ?, ?)",
+      [null, applicant_number, 0]   // default values
+    );
+
     console.log("✅ applicant_numbering_table insert successful");
 
     // ✅ Final response
@@ -4008,7 +4013,14 @@ app.get("/api/interview/not-emailed-applicants", async (req, res) => {
         ies.start_time,
         ies.end_time,
         ies.interviewer,
-        ps.interview_status
+        ps.interview_status,
+        -- ✅ exam scores
+        ae.English,
+        ae.Science,
+        ae.Filipino,
+        ae.Math,
+        ae.Abstract,
+        ae.final_rating   -- ✅ bring in the computed rating
       FROM interview_applicants ia
       LEFT JOIN applicant_numbering_table a 
         ON ia.applicant_id = a.applicant_number
@@ -4018,6 +4030,8 @@ app.get("/api/interview/not-emailed-applicants", async (req, res) => {
         ON ia.schedule_id = ies.schedule_id
       LEFT JOIN person_status_table ps 
         ON ps.person_id = p.person_id
+      LEFT JOIN admission_exam ae       -- ✅ join exam results
+        ON ae.person_id = p.person_id
       WHERE (ia.email_sent = 0 OR ia.email_sent IS NULL)
       ORDER BY p.last_name ASC, p.first_name ASC
     `);
@@ -4028,6 +4042,7 @@ app.get("/api/interview/not-emailed-applicants", async (req, res) => {
     res.status(500).send("Server error");
   }
 });
+
 
 // 2. Get all interview schedules
 app.get("/interview_schedules", async (req, res) => {
@@ -5992,7 +6007,7 @@ app.get("/schedule-plotting/day_list", async (req, res) => {
 
 //SCHEDULE CHECKER
 app.post("/api/check-subject", async (req, res) => {
-  const { section_id, school_year_id, prof_id, subject_id } = req.body;
+  const { section_id, school_year_id, subject_id } = req.body;
 
   if (!section_id || !school_year_id || !subject_id) {
     return res.status(400).json({ error: "Missing required fields" });
@@ -6000,7 +6015,7 @@ app.post("/api/check-subject", async (req, res) => {
 
   const query = `
     SELECT * FROM time_table 
-    WHERE department_section_id = ? AND school_year_id = ? AND course_id = ?
+    WHERE department_section_id = ? AND school_year_id = ? AND course_id = ? 
   `;
 
   try {
@@ -6017,12 +6032,16 @@ app.post("/api/check-subject", async (req, res) => {
   }
 });
 
+//HELPER FUNCTION 
 function timeToMinutes(timeStr) {
-  const [time, modifier] = timeStr.split(" "); // ["7:00", "AM"]
-  let [hours, minutes] = time.split(":").map(Number);
+  const parts = timeStr.trim().split(" ");
+  let [hours, minutes] = parts[0].split(":").map(Number);
+  const modifier = parts[1] ? parts[1].toUpperCase() : null;
 
-  if (modifier.toUpperCase() === "PM" && hours !== 12) hours += 12;
-  if (modifier.toUpperCase() === "AM" && hours === 12) hours = 0;
+  if (modifier) {
+    if (modifier === "PM" && hours !== 12) hours += 12;
+    if (modifier === "AM" && hours === 12) hours = 0;
+  }
 
   return hours * 60 + minutes;
 }
@@ -6032,16 +6051,6 @@ app.post("/api/check-conflict", async (req, res) => {
   const { day, start_time, end_time, section_id, school_year_id, prof_id, room_id, subject_id } = req.body;
 
   try {
-
-    const startMinutes = timeToMinutes(start_time);
-    const endMinutes = timeToMinutes(end_time);
-
-    const earliest = timeToMinutes("7:00 AM");
-    const latest = timeToMinutes("9:00 PM");
-
-    if (startMinutes < earliest || endMinutes > latest) {
-      return res.status(409).json({ conflict: true, message: "Time must be between 7:00 AM and 9:00 PM" });
-    }
 
     // Step 1: Check if the section + subject + school year is already assigned to another professor
     const checkSubjectQuery = `
@@ -6082,39 +6091,40 @@ app.post("/api/check-conflict", async (req, res) => {
     return res.status(500).json({ error: "Internal server error" });
   }
 });
-// ✅ Utility: Convert time string to minutes
-function timeToMinutes(timeStr) {
-  const [time, modifier] = timeStr.split(" ");
-  let [hours, minutes] = time.split(":").map(Number);
-
-  if (modifier === "PM" && hours !== 12) {
-    hours += 12;
-  }
-  if (modifier === "AM" && hours === 12) {
-    hours = 0;
-  }
-
-  return hours * 60 + minutes;
-}
 
 // ✅ Check conflict API
-app.post("/api/check-conflict", async (req, res) => {
+app.post("/api/check-time", async (req, res) => {
   const { start_time, end_time } = req.body;
 
   try {
-    const startMinutes = timeToMinutes(start_time);
-    const endMinutes = timeToMinutes(end_time);
-
+    let startMinutes = timeToMinutes(start_time);
+    let endMinutes = timeToMinutes(end_time);
     const earliest = timeToMinutes("7:00 AM");
     const latest = timeToMinutes("9:00 PM");
 
-    if (startMinutes < earliest || endMinutes > latest) {
-      return res
-        .status(409)
-        .json({ conflict: true, message: "Time must be between 7:00 AM and 9:00 PM" });
+    console.log({
+      start_time, end_time, startMinutes, endMinutes, earliest, latest
+    });
+
+    if (endMinutes <= startMinutes) {
+      return res.status(409).json({
+        conflict: true,
+        message: "End time must be later than start time (same day only)."
+      });
     }
 
-    return res.status(200).json({ conflict: false, message: "Valid schedule time" });
+    // ✅ Check validity
+    if (startMinutes < earliest || endMinutes > latest) {
+      return res.status(409).json({
+        conflict: true,
+        message: "Time must be between 7:00 AM and 9:00 PM (same day)."
+      });
+    }
+
+    return res.status(200).json({
+      conflict: false,
+      message: "Valid schedule time"
+    });
   } catch (err) {
     console.error("Error checking conflict:", err);
     return res.status(500).json({ error: "Server error while checking conflict" });
@@ -6127,6 +6137,56 @@ app.post("/api/insert-schedule", async (req, res) => {
 
   if (!day || !start_time || !end_time || !section_id || !school_year_id || !prof_id || !room_id || !subject_id) {
     return res.status(400).json({ error: "Missing required fields" });
+  }
+
+  let startMinutes = timeToMinutes(start_time);
+  let endMinutes = timeToMinutes(end_time);
+  const earliest = timeToMinutes("7:00 AM");
+  const latest = timeToMinutes("9:00 PM");
+
+  if (endMinutes <= startMinutes) {
+    return res.status(409).json({
+      conflict: true,
+      message: "End time must be later than start time (same day only)."
+    });
+  }
+
+  if (startMinutes < earliest || endMinutes > latest) {
+    return res.status(409).json({
+      conflict: true,
+      message: "Time must be between 7:00 AM and 9:00 PM (same day)."
+    });
+  }
+
+  const checkSubjectQuery = `
+    SELECT * FROM time_table
+    WHERE department_section_id = ? AND course_id = ? AND school_year_id = ? AND professor_id != ? 
+  `;
+
+  const [subjectResult] = await db3.query(checkSubjectQuery, [section_id, subject_id, school_year_id, prof_id]);
+
+  if (subjectResult.length > 0) {
+    return res.status(409).json({ conflict: true, message: "This subject is already assigned to another professor in this section and school year." });
+  }
+
+  const checkTimeQuery = `
+    SELECT * FROM time_table
+    WHERE room_day = ? 
+    AND school_year_id = ?
+    AND (professor_id = ? OR department_section_id = ? OR department_room_id = ?) 
+    AND (
+      (? >= school_time_start AND ? <= school_time_end) OR  
+      (? >= school_time_start AND ? <= school_time_end) OR  
+      (school_time_start >= ? AND school_time_start <= ?) OR  
+      (school_time_end >= ? AND school_time_end <= ?) OR
+      (school_time_start = ? AND school_time_end = ?)
+    )
+  `;
+
+  const [timeResult] = await db3.query(checkTimeQuery, [day, school_year_id, prof_id, section_id, room_id, start_time, start_time, end_time, end_time, start_time, end_time, start_time, end_time, start_time, end_time]);
+
+  if (timeResult.length > 0) {
+    return res.status(409).json({ conflict: true, message: "Schedule conflict detected! Please choose a different time." });
   }
 
   const query = `
@@ -6186,9 +6246,6 @@ app.get("/api/persons", async (req, res) => {
     res.status(500).send("Server error");
   }
 });
-
-
-
 
 // GET total number of accepted students
 app.get("/api/accepted-students-count", async (req, res) => {
@@ -7484,10 +7541,25 @@ app.get('/statistics/student_count/department/:dprtmnt_id', async (req, res) => 
   }
 });
 
-app.get('/api/departments', async (req, res) => {
+app.get('/api/departments/:dprtmnt_id', async (req, res) => {
+  const { dprtmnt_id } = req.params;
+  console.log(dprtmnt_id);
   try {
     const [departments] = await db3.execute(`
-      SELECT dprtmnt_id, dprtmnt_name FROM dprtmnt_table
+      SELECT dt.dprtmnt_id, dt.dprtmnt_name, dt.dprtmnt_code FROM dprtmnt_table AS dt WHERE dt.dprtmnt_id = ?
+    `, [dprtmnt_id]);
+    res.json(departments);
+  } catch (err) {
+    console.error("Error fetching departments:", err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+app.get('/api/departments', async (req, res) => {
+
+  try {
+    const [departments] = await db3.execute(`
+      SELECT dt.dprtmnt_id, dt.dprtmnt_name, dt.dprtmnt_code FROM dprtmnt_table AS dt
     `);
     res.json(departments);
   } catch (err) {
@@ -8207,7 +8279,7 @@ app.delete("/api/email-templates/:id", async (req, res) => {
   }
 });
 
-app.get("/api/email-templates/active-senders", async (req, res) =>{
+app.get("/api/email-templates/active-senders", async (req, res) => {
   const { department_id } = req.query;
   console.log("Department ID: ", department_id);
 
@@ -8245,7 +8317,7 @@ app.get("/api/admin_data/:email", async (req, res) => {
   }
 });
 app.get("/api/applied_program/:dprtmnt_id", async (req, res) => {
-  const {dprtmnt_id} = req.params;
+  const { dprtmnt_id } = req.params;
   try {
     const [rows] = await db3.execute(`
       SELECT 

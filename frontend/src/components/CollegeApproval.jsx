@@ -38,7 +38,7 @@ const tabs = [
     { label: "Applicant Form", to: "/admin_dashboard1", icon: <PersonIcon /> },
     { label: "Documents Submitted", to: "/student_requirements", icon: <DescriptionIcon /> },
     { label: "Entrance Examination Scores", to: "/applicant_scoring", icon: <SchoolIcon /> },
-    { label: "Qualifying Examination Scores", to: "/qualifying_exam_scores", icon: <FactCheckIcon /> },
+    { label: "Qualifying / Interview Examination Scores", to: "/qualifying_exam_scores", icon: <FactCheckIcon /> },
     { label: "College Approval", to: "/college_approval", icon: <CheckCircleIcon /> },
     { label: "Medical Clearance", to: "/medical_clearance", icon: <LocalHospitalIcon /> },
     { label: "Student Numbering", to: "/student_numbering", icon: <HowToRegIcon /> },
@@ -85,12 +85,10 @@ const CollegeApproval = () => {
         setActiveStep(index);
 
         const pid = sessionStorage.getItem("admin_edit_person_id");
-
         if (pid) {
-            // ✅ Always attach ?person_id for whichever tab we click
             navigate(`${to}?person_id=${pid}`);
         } else {
-            navigate("/medical_clearance"); // if no pid in session, just go raw
+            navigate(to);
         }
     };
 

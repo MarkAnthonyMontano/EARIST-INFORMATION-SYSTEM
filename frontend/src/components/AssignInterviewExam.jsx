@@ -2,6 +2,11 @@ import React, { useState, useEffect } from "react";
 import axios from "axios";
 import { Box, Button, Grid, MenuItem, TextField, Typography, Paper } from "@mui/material";
 import { Link, useLocation } from "react-router-dom";
+import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
+import { DatePicker } from "@mui/x-date-pickers/DatePicker";
+import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
+import dayjs from "dayjs";
+
 
 import { useNavigate } from "react-router-dom";
 
@@ -67,51 +72,51 @@ const AssignInterviewExam = () => {
         fetchSchedules();
     }, []);
 
-const handleSaveSchedule = async (e) => {
-  e.preventDefault();
-  setMessage("");
+    const handleSaveSchedule = async (e) => {
+        e.preventDefault();
+        setMessage("");
 
-  const sel = rooms.find((r) => String(r.room_id) === String(roomId));
-  if (!sel) {
-    setMessage("Please select a valid building and room.");
-    return;
-  }
+        const sel = rooms.find((r) => String(r.room_id) === String(roomId));
+        if (!sel) {
+            setMessage("Please select a valid building and room.");
+            return;
+        }
 
-  try {
-    await axios.post("http://localhost:5000/insert_interview_schedule", {
-      day_description: day,
-      building_description: sel.building_description,
-      room_description: sel.room_description,
-      start_time: startTime,
-      end_time: endTime,
-      interviewer,
-      room_quota: roomQuota || 40,
-    });
+        try {
+            await axios.post("http://localhost:5000/insert_interview_schedule", {
+                day_description: day,
+                building_description: sel.building_description,
+                room_description: sel.room_description,
+                start_time: startTime,
+                end_time: endTime,
+                interviewer,
+                room_quota: roomQuota || 40,
+            });
 
-    // ✅ Success
-    setMessage("Interview schedule saved successfully ✅");
-    setDay("");
-    setRoomId("");
-    setStartTime("");
-    setEndTime("");
-    setInterviewer("");
-    setRoomQuota("");
+            // ✅ Success
+            setMessage("Interview schedule saved successfully ✅");
+            setDay("");
+            setRoomId("");
+            setStartTime("");
+            setEndTime("");
+            setInterviewer("");
+            setRoomQuota("");
 
-    // 🔄 Refresh schedules
-    const res = await axios.get("http://localhost:5000/interview_schedules_with_count");
-    setSchedules(res.data);
+            // 🔄 Refresh schedules
+            const res = await axios.get("http://localhost:5000/interview_schedules_with_count");
+            setSchedules(res.data);
 
-  } catch (err) {
-    console.error("Error saving schedule:", err);
+        } catch (err) {
+            console.error("Error saving schedule:", err);
 
-    if (err.response && err.response.data && err.response.data.error) {
-      // ✅ Display backend-provided error (like conflict)
-      setMessage(err.response.data.error);
-    } else {
-      setMessage("Failed to save schedule ❌");
-    }
-  }
-};
+            if (err.response && err.response.data && err.response.data.error) {
+                // ✅ Display backend-provided error (like conflict)
+                setMessage(err.response.data.error);
+            } else {
+                setMessage("Failed to save schedule ❌");
+            }
+        }
+    };
 
 
 
@@ -218,25 +223,18 @@ const handleSaveSchedule = async (e) => {
                         <Grid container spacing={1}>
                             {/* Day */}
                             <Grid item xs={12}>
-                                <Typography fontWeight={500}>
-                                    Day:
-                                </Typography>
-                                <TextField
-                                    select
-                                    fullWidth
-                                    value={day}
-                                    onChange={(e) => setDay(e.target.value)}
-                                    required
-                                    variant="outlined"
-                                >
-                                    {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map(
-                                        (d) => (
-                                            <MenuItem key={d} value={d}>
-                                                {d}
-                                            </MenuItem>
-                                        )
-                                    )}
-                                </TextField>
+                                <Typography fontWeight={500}>Exam Date:</Typography>
+                                <LocalizationProvider dateAdapter={AdapterDayjs}>
+                                    <DatePicker
+                                        value={day ? dayjs(day) : null}
+                                        onChange={(newValue) => {
+                                            // Save as MM/DD/YYYY for backend
+                                            const formatted = newValue ? dayjs(newValue).format("MM/DD/YYYY") : "";
+                                            setDay(formatted);
+                                        }}
+                                        slotProps={{ textField: { fullWidth: true, required: true } }}
+                                    />
+                                </LocalizationProvider>
                             </Grid>
 
                             {/* Building */}
@@ -249,7 +247,7 @@ const handleSaveSchedule = async (e) => {
                                     variant="outlined"
                                     value={buildingName}
                                     onChange={(e) => setBuildingName(e.target.value)}
-                                    sx={{ mb: 2 }}
+                                
                                 >
                                     {[...new Set(
                                         rooms
@@ -272,7 +270,7 @@ const handleSaveSchedule = async (e) => {
                                     variant="outlined"
                                     value={roomId}                 // ✅ bind to roomId (not roomName)
                                     onChange={(e) => setRoomId(e.target.value)} // ✅ update roomId
-                                    sx={{ mb: 2 }}
+                                   
                                 >
                                     {rooms
                                         .filter(r => r.building_description === buildingName || !buildingName)

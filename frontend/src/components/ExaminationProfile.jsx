@@ -709,7 +709,7 @@ const ExaminationProfile = () => {
                                         <td colSpan={20}>
                                             <div style={{ display: "flex", alignItems: "center", width: "100%" }}>
                                                 <label style={{ fontWeight: "bold", whiteSpace: "nowrap", marginRight: "10px" }}>Permit No.:</label>
-                                                <span style={{ flexGrow: 1, borderBottom: "1px solid black", height: "1.2em" }}></span>
+                                                <span style={{ flexGrow: 1, borderBottom: "1px solid black", height: "1.2em", textAlign:"left", fontFamily:"Arial" }}>{selectedPerson?.applicant_number}</span>
                                             </div>
                                         </td>
                                     </tr>
@@ -790,7 +790,7 @@ const ExaminationProfile = () => {
                                         <td colSpan={20}>
                                             <div style={{ display: "flex", alignItems: "center", width: "100%" }}>
                                                 <label style={{ fontWeight: "bold", whiteSpace: "nowrap", marginRight: "10px" }}>Date of Exam:</label>
-                                                <span style={{ flexGrow: 1, borderBottom: "1px solid black", height: "1.2em", fontFamily: "Arial" }}>
+                                                <span style={{ flexGrow: 1, borderBottom: "1px solid black", height: "1.2em", fontFamily: "Arial", textAlign: "left" }}>
                                                     {examSchedule?.date_of_exam}
                                                 </span>
                                             </div>
@@ -812,6 +812,7 @@ const ExaminationProfile = () => {
                                                         borderBottom: "1px solid black",
                                                         height: "1.2em",
                                                         fontFamily: "Arial",
+                                                        textAlign: "left",
                                                     }}
                                                 >
                                                     {examSchedule
@@ -838,9 +839,10 @@ const ExaminationProfile = () => {
                                                         borderBottom: "1px solid black",
                                                         height: "1.2em",
                                                         fontFamily: "Arial",
+                                                        textAlign: "left",
                                                     }}
                                                 >
-                                                    {examSchedule?.room_description || ""}
+                                                    {examSchedule?.building_description || ""}
                                                 </span>
                                             </div>
                                         </td>
@@ -872,10 +874,11 @@ const ExaminationProfile = () => {
                                                             height: "1.2em",
                                                             fontFamily: "Arial",
                                                             marginRight: "20px",
-                                                            width: "140px"
+                                                            width: "140px",
+                                                            textAlign: "left"
                                                         }}
                                                     >
-                                                        {examSchedule?.room_no || ""}
+                                                        {examSchedule?.room_description || ""}
                                                     </span>
                                                 </div>
 
@@ -898,7 +901,7 @@ const ExaminationProfile = () => {
                                         <td colSpan={20}>
                                             <div style={{ display: "flex", alignItems: "center", width: "100%", marginTop: "-110px" }}>
                                                 <label style={{ fontWeight: "bold", whiteSpace: "nowrap", marginRight: "10px" }}>Scheduled by:</label>
-                                                <span style={{ flexGrow: 1, borderBottom: "1px solid black", height: "1.2em", fontFamily: "Arial" }}>
+                                                <span style={{ flexGrow: 1, borderBottom: "1px solid black", height: "1.2em", fontFamily: "Arial", textAlign: "left" }}>
                                                     {examSchedule?.proctor || ""}
                                                 </span>
                                             </div>
@@ -923,6 +926,7 @@ const ExaminationProfile = () => {
                                                         borderBottom: "1px solid black",
                                                         height: "1.2em",
                                                         fontFamily: "Arial",
+                                                        textAlign: "left",
                                                     }}
                                                 >
                                                     {examSchedule?.schedule_created_at

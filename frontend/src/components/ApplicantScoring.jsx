@@ -48,10 +48,8 @@ const ApplicantList = () => {
         sessionStorage.setItem("admin_edit_person_id_source", "applicant_list");
         sessionStorage.setItem("admin_edit_person_id_ts", String(Date.now()));
 
-        // ✅ Always pass person_id in the URL
-        navigate(`/admin_dashboard1?person_id=${person_id}`);
-    };
 
+    };
 
 
 
@@ -60,7 +58,7 @@ const ApplicantList = () => {
         { label: "Applicant Form", to: "/admin_dashboard1", icon: <PersonIcon /> },
         { label: "Documents Submitted", to: "/student_requirements", icon: <DescriptionIcon /> },
         { label: "Entrance Examination Scores", to: "/applicant_scoring", icon: <SchoolIcon /> },
-        { label: "Qualifying Examination Scores", to: "/qualifying_exam_scores", icon: <FactCheckIcon /> },
+        { label: "Qualifying / Interview Examination Scores", to: "/qualifying_exam_scores", icon: <FactCheckIcon /> },
         { label: "College Approval", to: "/college_approval", icon: <CheckCircleIcon /> },
         { label: "Medical Clearance", to: "/medical_clearance", icon: <LocalHospitalIcon /> },
         { label: "Student Numbering", to: "/student_numbering", icon: <HowToRegIcon /> },
@@ -69,11 +67,23 @@ const ApplicantList = () => {
     const [activeStep, setActiveStep] = useState(3);
     const [clickedSteps, setClickedSteps] = useState(Array(tabs.length).fill(false));
 
+
+    useEffect(() => {
+        if (location.search.includes("person_id")) {
+            navigate("/applicant_scoring", { replace: true });  // ⬅️ removes ?person_id
+        }
+    }, [location, navigate]);
+
     const handleStepClick = (index, to) => {
         setActiveStep(index);
-        navigate(to); // simple navigation, no query string
-    };
+        const pid = sessionStorage.getItem("admin_edit_person_id");
 
+        if (pid && to !== "/qualifying_exam_scores") {
+            navigate(`${to}?person_id=${pid}`);   // adds ?person_id
+        } else {
+            navigate(to);                         // keeps /applicant_list clean
+        }
+    };
 
 
 

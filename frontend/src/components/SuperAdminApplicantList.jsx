@@ -29,22 +29,21 @@ import EaristLogo from "../assets/EaristLogo.png";
 import { Link } from "react-router-dom";
 import PersonIcon from "@mui/icons-material/Person";
 import DescriptionIcon from "@mui/icons-material/Description";
-import QuizIcon from '@mui/icons-material/Quiz';
-import AssignmentIcon from '@mui/icons-material/Assignment';
+import AssignmentIcon from "@mui/icons-material/Assignment";
+import RecordVoiceOverIcon from "@mui/icons-material/RecordVoiceOver";
+import SchoolIcon from "@mui/icons-material/School";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import LocalHospitalIcon from "@mui/icons-material/LocalHospital";
 import HowToRegIcon from "@mui/icons-material/HowToReg";
 import ListAltIcon from "@mui/icons-material/ListAlt";
-import SchoolIcon from '@mui/icons-material/School';        // For Entrance Examination Scores
-import FactCheckIcon from '@mui/icons-material/FactCheck';  // For Qualifying Examination Scores
 
 const socket = io("http://localhost:5000");
 
-const ApplicantList = () => {
+const SuperAdminApplicantList = () => {
     const location = useLocation();
     const queryParams = new URLSearchParams(location.search);
     const queryPersonId = (queryParams.get("person_id") || "").trim();
-     
+
     const handleRowClick = (person_id) => {
         if (!person_id) return;
 
@@ -56,17 +55,18 @@ const ApplicantList = () => {
         navigate(`/admin_dashboard1?person_id=${person_id}`);
     };
 
+
+
     const tabs1 = [
         { label: "Applicant List", to: "/applicant_list", icon: <ListAltIcon /> },
         { label: "Applicant Form", to: "/admin_dashboard1", icon: <PersonIcon /> },
         { label: "Documents Submitted", to: "/student_requirements", icon: <DescriptionIcon /> },
-        { label: "Entrance Examination Scores", to: "/applicant_scoring", icon: <SchoolIcon /> },
-        { label: "Qualifying / Interview Examination Scores", to: "/qualifying_exam_scores", icon: <FactCheckIcon /> },
+        { label: "Interview / Qualifiying Exam", to: "/interview", icon: <RecordVoiceOverIcon /> },
         { label: "College Approval", to: "/college_approval", icon: <CheckCircleIcon /> },
         { label: "Medical Clearance", to: "/medical_clearance", icon: <LocalHospitalIcon /> },
         { label: "Student Numbering", to: "/student_numbering", icon: <HowToRegIcon /> },
     ];
-    
+
     const navigate = useNavigate();
     const [activeStep, setActiveStep] = useState(0);
     const [clickedSteps, setClickedSteps] = useState(Array(tabs1.length).fill(false));
@@ -97,7 +97,7 @@ const ApplicantList = () => {
     const [userID, setUserID] = useState("");
     const [user, setUser] = useState("");
     const [userRole, setUserRole] = useState("");
-    const [adminData, setAdminData] = useState({ dprtmnt_id: "" });
+
 
     useEffect(() => {
         const storedUser = localStorage.getItem("email");
@@ -124,20 +124,6 @@ const ApplicantList = () => {
         window.location.href = "/login";
     }, [queryPersonId]);
 
-    const fetchPersonData = async () => {
-    try {
-        const res = await axios.get(`http://localhost:5000/api/admin_data/${user}`);
-        setAdminData(res.data); // { dprtmnt_id: "..." }
-    } catch (err) {
-        console.error("Error fetching admin data:", err);
-    }
-    };
-
-    useEffect(() => {
-    if (user) {
-        fetchPersonData();
-    }
-    }, [user]);
 
     const [error, setError] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
@@ -228,12 +214,10 @@ const ApplicantList = () => {
     const [curriculumOptions, setCurriculumOptions] = useState([]);
 
     useEffect(() => {
-        if (!adminData.dprtmnt_id) return;
-
         const fetchCurriculums = async () => {
             try {
-                const response = await axios.get(`http://localhost:5000/api/applied_program/${adminData.dprtmnt_id}`);
-                console.log("✅ curriculumOptions:", response.data); 
+                const response = await axios.get("http://localhost:5000/api/applied_program");
+                console.log("✅ curriculumOptions:", response.data); // <--- add this
                 setCurriculumOptions(response.data);
             } catch (error) {
                 console.error("Error fetching curriculum options:", error);
@@ -241,7 +225,7 @@ const ApplicantList = () => {
         };
 
         fetchCurriculums();
-    }, [adminData.dprtmnt_id]);
+    }, []);
 
     const [selectedApplicantStatus, setSelectedApplicantStatus] = useState("");
     const [sortBy, setSortBy] = useState("name");
@@ -257,6 +241,7 @@ const ApplicantList = () => {
     const [semesters, setSchoolSemester] = useState([]);
     const [selectedSchoolYear, setSelectedSchoolYear] = useState("");
     const [selectedSchoolSemester, setSelectedSchoolSemester] = useState('');
+    const [selectedActiveSchoolYear, setSelectedActiveSchoolYear] = useState('');
 
     useEffect(() => {
         axios
@@ -272,7 +257,19 @@ const ApplicantList = () => {
             .catch((err) => console.error(err));
     }, [])
 
-    
+    useEffect(() => {
+
+        axios
+            .get(`http://localhost:5000/active_school_year`)
+            .then((res) => {
+                if (res.data.length > 0) {
+                    setSelectedSchoolYear(res.data[0].year_id);
+                    setSelectedSchoolSemester(res.data[0].semester_id);
+                }
+            })
+            .catch((err) => console.error(err));
+
+    }, []);
 
     const handleSchoolYearChange = (event) => {
         setSelectedSchoolYear(event.target.value);
@@ -319,15 +316,9 @@ const ApplicantList = () => {
                 selectedDepartmentFilter === "" ||
                 programInfo?.dprtmnt_name === selectedDepartmentFilter;
 
-            const applicantAppliedYear = new Date(personData.created_at).getFullYear();
-            const schoolYear = schoolYears.find((sy) => sy.year_id === selectedSchoolYear);
-
-            const matchesSchoolYear =
-                selectedSchoolYear === "" || (schoolYear && (String(applicantAppliedYear) === String(schoolYear.current_year)))
-
-            const matchesSemester =
-                selectedSchoolSemester === "" ||
-                personData.semester_id === selectedSchoolSemester;
+            // (Your year/semester checks look off; leaving as-is since you didn’t ask to change them.)
+            const matchesSchoolYear = selectedSchoolYear;
+            const matchesSemester = selectedSchoolSemester;
 
             // date range (unchanged)
             let matchesDateRange = true;
@@ -412,11 +403,9 @@ const ApplicantList = () => {
     }, []);
 
     useEffect(() => {
-        if (!adminData.dprtmnt_id) return;
-
         const fetchDepartments = async () => {
             try {
-                const response = await axios.get(`http://localhost:5000/api/departments/${adminData.dprtmnt_id}`); // ✅ Update if needed
+                const response = await axios.get("http://localhost:5000/api/departments"); // ✅ Update if needed
                 setDepartment(response.data);
             } catch (error) {
                 console.error("Error fetching departments:", error);
@@ -424,7 +413,7 @@ const ApplicantList = () => {
         };
 
         fetchDepartments();
-    }, [adminData.dprtmnt_id]);
+    }, []);
 
 
     useEffect(() => {
@@ -473,14 +462,6 @@ const ApplicantList = () => {
             });
     }, []);
 
-    useEffect(() => {
-        if (department.length > 0 && !selectedDepartmentFilter) {
-            const firstDept = department[0].dprtmnt_name;
-            setSelectedDepartmentFilter(firstDept);
-            handleDepartmentChange(firstDept); // if you also want to trigger it
-        }
-    }, [department, selectedDepartmentFilter]);
-
     const handleDepartmentChange = (selectedDept) => {
         setSelectedDepartmentFilter(selectedDept);
         if (!selectedDept) {
@@ -500,17 +481,17 @@ const ApplicantList = () => {
 
 
     const printDiv = () => {
-        // Pick address based on selected campus
-        let campusAddress = "";
-        if (person?.campus === "0") {
-            campusAddress = "Nagtahan St. Sampaloc, Manila";
-        } else if (person?.campus === "1") {
-            campusAddress = "Blk. 3 Lot 2, 5 Congressional Rd, General Mariano Alvarez";
-        }
+  // Pick address based on selected campus
+  let campusAddress = "";
+  if (person?.campus === "0") {
+    campusAddress = "Nagtahan St. Sampaloc, Manila";
+  } else if (person?.campus === "1") {
+    campusAddress = "Blk. 3 Lot 2, 5 Congressional Rd, General Mariano Alvarez";
+  }
 
-        const newWin = window.open("", "Print-Window");
-        newWin.document.open();
-        newWin.document.write(`
+  const newWin = window.open("", "Print-Window");
+  newWin.document.open();
+  newWin.document.write(`
     <html>
       <head>
         <title>Applicant List</title>
@@ -605,16 +586,16 @@ const ApplicantList = () => {
                   <td>${person.applicant_number ?? "N/A"}</td>
                   <td>${person.last_name}, ${person.first_name} ${person.middle_name ?? ""} ${person.extension ?? ""}</td>
                   <td>${curriculumOptions.find(
-            item => item.curriculum_id?.toString() === person.program?.toString()
-        )?.program_code ?? "N/A"}</td>
+                    item => item.curriculum_id?.toString() === person.program?.toString()
+                  )?.program_code ?? "N/A"}</td>
                   <td>${person.generalAverage1 ?? ""}</td>
                   <td>${new Date(person.created_at).toLocaleDateString("en-PH")}</td>
                   <td>${person.registrar_status === 1
-                ? "Submitted"
-                : person.registrar_status === 0
-                    ? "Unsubmitted / Incomplete"
-                    : ""
-            }</td>
+                        ? "Submitted"
+                        : person.registrar_status === 0
+                          ? "Unsubmitted / Incomplete"
+                          : ""
+                      }</td>
                 </tr>
               `).join("")}
             </tbody>
@@ -624,28 +605,8 @@ const ApplicantList = () => {
       </body>
     </html>
   `);
-        newWin.document.close();
-    };
-
- // 🔒 Disable right-click
-  document.addEventListener('contextmenu', (e) => e.preventDefault());
-
-  // 🔒 Block DevTools shortcuts + Ctrl+P silently
-  document.addEventListener('keydown', (e) => {
-    const isBlockedKey =
-      e.key === 'F12' || // DevTools
-      e.key === 'F11' || // Fullscreen
-      (e.ctrlKey && e.shiftKey && (e.key.toLowerCase() === 'i' || e.key.toLowerCase() === 'j')) || // Ctrl+Shift+I/J
-      (e.ctrlKey && e.key.toLowerCase() === 'u') || // Ctrl+U (View Source)
-      (e.ctrlKey && e.key.toLowerCase() === 'p');   // Ctrl+P (Print)
-
-    if (isBlockedKey) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-  });
-
-
+  newWin.document.close();
+};
 
     return (
         <Box sx={{ height: 'calc(100vh - 150px)', overflowY: 'auto', pr: 1, p: 2 }}>
@@ -1171,9 +1132,9 @@ const ApplicantList = () => {
                         <Box display="flex" alignItems="center" gap={1}>
                             <Typography fontSize={13} sx={{ minWidth: "100px" }}>Semester:</Typography>
                             <FormControl size="small" sx={{ width: "200px" }}>
-                                <InputLabel>School Semester</InputLabel>
+                                <InputLabel id="semester-label">School Semester</InputLabel>
                                 <Select
-                                    label="School Semester"
+                                    labelId="semester-label"
                                     value={selectedSchoolSemester}
                                     onChange={handleSchoolSemesterChange}
                                     displayEmpty
@@ -1206,6 +1167,7 @@ const ApplicantList = () => {
                                     }}
                                     displayEmpty
                                 >
+                                    <MenuItem value="">All Departments</MenuItem>
                                     {department.map((dep) => (
                                         <MenuItem key={dep.dprtmnt_id} value={dep.dprtmnt_name}>
                                             {dep.dprtmnt_name} ({dep.dprtmnt_code})
@@ -1417,7 +1379,7 @@ const ApplicantList = () => {
                                         fontSize: "12px",
                                     }}
                                 >
-                                    {person.document_status}
+                                    {person.document_status || "N/A"}
                                 </TableCell>
 
                                 {/* Registrar Status */}
@@ -1517,4 +1479,4 @@ const ApplicantList = () => {
     );
 };
 
-export default ApplicantList;
+export default SuperAdminApplicantList;

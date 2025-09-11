@@ -26,6 +26,7 @@ const ApplicantDashboard = () => {
   const [userRole, setUserRole] = useState("");
   const [applicantID, setApplicantID] = useState("");
   const [person, setPerson] = useState({
+    profile_img: "",
     last_name: "",
     first_name: "",
     middle_name: "",
@@ -168,9 +169,9 @@ const ApplicantDashboard = () => {
       );
       if (res.data && res.data.applicant_number) {
         setApplicantID(res.data.applicant_number);
-
-        // fetch schedule once applicant number is known
+        fetchEntranceExamScores(res.data.applicant_number);
         fetchProctorSchedule(res.data.applicant_number);
+        fetchInterviewSchedule(res.data.applicant_number);
       }
     } catch (error) {
       console.error("Failed to fetch applicant number:", error);
@@ -250,6 +251,100 @@ const ApplicantDashboard = () => {
     month: "long",
     year: "numeric",
   });
+
+  const [examScores, setExamScores] = useState({
+    english: null,
+    science: null,
+    filipino: null,
+    math: null,
+    abstract: null,
+    final: null
+  });
+
+  const fetchEntranceExamScores = async (applicantNumber) => {
+    if (!applicantNumber) return;
+    try {
+      const res = await axios.get("http://localhost:5000/api/applicants-with-number");
+      const applicant = res.data.find(a => a.applicant_number === applicantNumber);
+
+      if (applicant) {
+        const english = Number(applicant.english) || 0;
+        const science = Number(applicant.science) || 0;
+        const filipino = Number(applicant.filipino) || 0;
+        const math = Number(applicant.math) || 0;
+        const abstract = Number(applicant.abstract) || 0;
+        const finalRating = applicant.final_rating
+          ? Number(applicant.final_rating)
+          : (english + science + filipino + math + abstract) / 5;
+
+        setExamScores({
+          english,
+          science,
+          filipino,
+          math,
+          abstract,
+          final: finalRating.toFixed(2)
+        });
+      } else {
+        setExamScores({
+          english: null,
+          science: null,
+          filipino: null,
+          math: null,
+          abstract: null,
+          final: null
+        });
+      }
+    } catch (err) {
+      console.error("❌ Failed to fetch entrance exam scores:", err);
+    }
+  };
+
+
+  const hasScores = examScores.english !== null &&
+    examScores.science !== null &&
+    examScores.filipino !== null &&
+    examScores.math !== null &&
+    examScores.abstract !== null &&
+    (
+      examScores.english > 0 ||
+      examScores.science > 0 ||
+      examScores.filipino > 0 ||
+      examScores.math > 0 ||
+      examScores.abstract > 0
+    );
+
+  const hasSchedule = proctor?.email_sent === 1;
+
+  const [interviewSchedule, setInterviewSchedule] = useState(null);
+  const [hasInterviewScores, setHasInterviewScores] = useState(false);
+
+  const fetchInterviewSchedule = async (applicantNumber) => {
+    if (!applicantNumber) return;
+    try {
+      const res = await axios.get(
+        `http://localhost:5000/api/applicant-interview-schedule/${applicantNumber}`
+      );
+      console.info("Interview schedule:", res.data);
+      setInterviewSchedule(res.data);
+
+      // detect if they already have interview/qualifying scores
+      if (
+        qualifyingExamScore !== null ||
+        qualifyingInterviewScore !== null ||
+        examScore !== null
+      ) {
+        setHasInterviewScores(true);
+      } else {
+        setHasInterviewScores(false);
+      }
+    } catch (err) {
+      console.error("❌ Failed to fetch interview schedule:", err);
+      setInterviewSchedule(null);
+    }
+  };
+
+
 
   return (
     <Box
@@ -409,7 +504,7 @@ const ApplicantDashboard = () => {
               {person?.document_status === "Documents Verified & ECAT" ? (
                 <Typography
                   variant="body2"
-                  sx={{ fontWeight: "bold", color: "green" }}
+                  sx={{ fontWeight: "bold", color: "green", textAlign: "left" }}
                 >
                   ✅ Your documents have been verified. <br />
                   ECAT Examination Permit has been issued.
@@ -455,54 +550,71 @@ const ApplicantDashboard = () => {
                 Check schedule and results of your exam.
               </Typography>
 
-              <Typography variant="body2" sx={{ fontWeight: "bold", color: "maroon" }}>
-                Entrance Exam Score:
 
-              </Typography>
-
-              {!proctor?.email_sent && (
+              {/* ✅ PHASE 1: Pending (no schedule, no scores) */}
+              {!hasSchedule && !hasScores && (
                 <Typography
                   variant="body2"
                   sx={{ fontWeight: "bold", color: "gray" }}
                 >
-                  Status: Pending
+                  ⏳ Status: Pending
                 </Typography>
               )}
 
-              {proctor?.email_sent === 1 && (
+              {/* ✅ PHASE 2: Scheduled (schedule present, no scores) */}
+              {hasSchedule && !hasScores && (
                 <>
+                  <Divider sx={{ my: 1 }} />
                   <Typography variant="body2" sx={{ fontWeight: "bold", color: "maroon" }}>
                     👨‍🏫 Proctor: {proctor?.proctor || "TBA"}
                   </Typography>
-
                   <Typography variant="body2" sx={{ fontWeight: "bold", color: "maroon" }}>
                     📅 Date: {proctor?.day_description || "TBA"}
                   </Typography>
-
                   <Typography variant="body2" sx={{ fontWeight: "bold", color: "maroon" }}>
-                    🏫 Building: {proctor?.room_description || "TBA"}
+                    🏫 Building: {proctor?.building_description || "TBA"}
                   </Typography>
-
                   <Typography variant="body2" sx={{ fontWeight: "bold", color: "maroon" }}>
-                    🏷️ Room No: {proctor?.room_no || "TBA"}
+                    🏷️ Room No: {proctor?.room_description || "TBA"}
                   </Typography>
-
                   <Typography variant="body2" sx={{ fontWeight: "bold", color: "maroon" }}>
                     ⏰ Time: {formatTime(proctor?.start_time)} – {formatTime(proctor?.end_time)}
                   </Typography>
-
-                  <Typography variant="body2" sx={{ fontWeight: "bold", color: "maroon" }}>
-                    Take note: Proceed to the Examination Day Schedule. Failure to attend the examination schedule shall result in forfeiture of the application.
-                  </Typography>
-
-
-
                 </>
               )}
+
+              {/* ✅ PHASE 3: Released (scores present, hide schedule) */}
+              {hasScores && (
+                <Box sx={{ mt: 1, textAlign: "left" }}>
+                  <Typography variant="h6" sx={{ fontWeight: "bold", color: "maroon" }}>
+                    Entrance Exam Score:
+                  </Typography>
+
+                  <Typography variant="body2" sx={{ fontWeight: "bold", color: "maroon" }}>
+                    📝 English: {examScores.english}
+                  </Typography>
+                  <Typography variant="body2" sx={{ fontWeight: "bold", color: "maroon" }}>
+                    🔬 Science: {examScores.science}
+                  </Typography>
+                  <Typography variant="body2" sx={{ fontWeight: "bold", color: "maroon" }}>
+                    📖 Filipino: {examScores.filipino}
+                  </Typography>
+                  <Typography variant="body2" sx={{ fontWeight: "bold", color: "maroon" }}>
+                    ➗ Math: {examScores.math}
+                  </Typography>
+                  <Typography variant="body2" sx={{ fontWeight: "bold", color: "maroon" }}>
+                    🧠 Abstract: {examScores.abstract}
+                  </Typography>
+                  <Typography variant="body2" sx={{ fontWeight: "bold", color: "green" }}>
+                    ⭐ Final Rating: {examScores.final}
+                  </Typography>
+                </Box>
+              )}
+
+
             </CardContent>
           </Card>
         </Grid>
-
 
 
         <Grid item xs={12} md={4}>
@@ -529,40 +641,59 @@ const ApplicantDashboard = () => {
                 Interview Schedule / Qualifying Exam
               </Typography>
 
+              {/* ✅ Phase 1: Pending */}
+              {!interviewSchedule && !hasInterviewScores && (
+                <Typography
+                  variant="body2"
+                  sx={{ fontWeight: "bold", color: "gray" }}
+                >
+                  ⏳ Status: Pending
+                </Typography>
+              )}
 
-
-              <Box sx={{ mt: 2 }}>
-                {(qualifyingExamScore !== null) || (qualifyingInterviewScore !== null) || (examScore !== null) ? (
-                  <>
-                    <Typography variant="body2" sx={{ fontWeight: "bold", color: "maroon" }}>
-                      Interview Exam Score: {qualifyingInterviewScore !== null ? qualifyingInterviewScore : "N/A"}
-                    </Typography>
-
-                    <Typography variant="body2" sx={{ fontWeight: "bold", color: "maroon" }}>
-                      Qualifying Exam Score: {qualifyingExamScore !== null ? qualifyingExamScore : "N/A"}
-                    </Typography>
-
-                    <Typography variant="body2" sx={{ fontWeight: "bold", color: "maroon" }}>
-                      Exam Result: {examScore !== null ? examScore : "N/A"}
-                    </Typography>
-
-                    <Typography variant="body2" sx={{ fontWeight: "bold", color: "maroon" }}>
-                      Total Average: {(
-                        (Number(qualifyingExamScore ?? 0) + Number(qualifyingInterviewScore ?? 0) + Number(examScore ?? 0))
-                        / (((qualifyingExamScore !== null) + (qualifyingInterviewScore !== null) + (examScore !== null)) || 1)
-                      ).toFixed(2)}
-                    </Typography>
-                  </>
-                ) : (
-                  <Typography variant="body2" sx={{ fontWeight: "bold", color: "gray" }}>
-                    Status: Pending
+              {/* ✅ Phase 2: Scheduled (show schedule if no scores yet) */}
+              {interviewSchedule && !hasInterviewScores && (
+                <Box sx={{ mt: 1, textAlign: "left" }}>
+                  <Typography variant="body2" sx={{ fontWeight: "bold", color: "maroon" }}>
+                    👤 Interviewer: {interviewSchedule.interviewer || "TBA"}
                   </Typography>
-                )}
-              </Box>
+                  <Typography variant="body2" sx={{ fontWeight: "bold", color: "maroon" }}>
+                    📅 Date: {interviewSchedule.day_description || "TBA"}
+                  </Typography>
+                  <Typography variant="body2" sx={{ fontWeight: "bold", color: "maroon" }}>
+                    🏫 Building: {interviewSchedule.building_description || "TBA"}
+                  </Typography>
+                  <Typography variant="body2" sx={{ fontWeight: "bold", color: "maroon" }}>
+                    🏷️ Room: {interviewSchedule.room_description || "TBA"}
+                  </Typography>
+                  <Typography variant="body2" sx={{ fontWeight: "bold", color: "maroon" }}>
+                    ⏰ Time: {formatTime(interviewSchedule.start_time)} – {formatTime(interviewSchedule.end_time)}
+                  </Typography>
+                </Box>
+              )}
 
+              {/* ✅ Phase 3: Released (show scores if present, hide schedule) */}
+              {hasInterviewScores && (
+                <Box sx={{ mt: 2, textAlign: "left" }}>
+                  <Typography variant="body2" sx={{ fontWeight: "bold", color: "maroon" }}>
+                    🗣 Interview Score: {qualifyingInterviewScore ?? "N/A"}
+                  </Typography>
+                  <Typography variant="body2" sx={{ fontWeight: "bold", color: "maroon" }}>
+                    📝 Qualifying Exam Score: {qualifyingExamScore ?? "N/A"}
+                  </Typography>
+                  <Typography variant="body2" sx={{ fontWeight: "bold", color: "maroon" }}>
+                    📊 Exam Result: {examScore ?? "N/A"}
+                  </Typography>
+                  <Typography variant="body2" sx={{ fontWeight: "bold", color: "green" }}>
+                    📈 Total Average: {(
+                      (Number(qualifyingExamScore ?? 0) +
+                        Number(qualifyingInterviewScore ?? 0) +
+                        Number(examScore ?? 0)) / 3
+                    ).toFixed(2)}
+                  </Typography>
+                </Box>
+              )}
             </CardContent>
-
-
 
           </Card>
         </Grid>
@@ -624,6 +755,9 @@ const ApplicantDashboard = () => {
               <LocalHospitalIcon sx={{ color: "maroon" }} fontSize="large" />
               <Typography variant="h6" gutterBottom sx={{ mt: 1 }}>
                 Medical Submitted
+              </Typography>
+              <Typography variant="body2" sx={{ fontWeight: "bold", color: "gray" }}>
+                Status: Application is on process
               </Typography>
 
               {medicalUploads.length === 0 ? (

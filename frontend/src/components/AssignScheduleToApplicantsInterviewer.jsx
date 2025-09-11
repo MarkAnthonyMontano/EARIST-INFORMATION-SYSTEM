@@ -35,47 +35,47 @@ const socket = io("http://localhost:5000");
 const AssignScheduleToApplicantsInterviewer = () => {
     const [user, setUser] = useState(null);
     const [adminData, setAdminData] = useState({ dprtmnt_id: "" });
-const [emailSender, setEmailSender] = useState("");
+    const [emailSender, setEmailSender] = useState("");
 
     useEffect(() => {
-    const storedEmail = localStorage.getItem("email");
-    if (storedEmail) {
-        setUser(storedEmail); // email is just a string
-    }
+        const storedEmail = localStorage.getItem("email");
+        if (storedEmail) {
+            setUser(storedEmail);
+        }
     }, []);
 
     const fetchPersonData = async () => {
-    try {
-        const res = await axios.get(`http://localhost:5000/api/admin_data/${user}`);
-        setAdminData(res.data); // { dprtmnt_id: "..." }
-    } catch (err) {
-        console.error("Error fetching admin data:", err);
-    }
+        try {
+            const res = await axios.get(`http://localhost:5000/api/admin_data/${user}`);
+            setAdminData(res.data); // { dprtmnt_id: "..." }
+        } catch (err) {
+            console.error("Error fetching admin data:", err);
+        }
     };
 
     useEffect(() => {
-    if (user) {
-        fetchPersonData();
-    }
+        if (user) {
+            fetchPersonData();
+        }
     }, [user]);
 
     useEffect(() => {
-    const fetchActiveSenders = async () => {
-        if (!adminData.dprtmnt_id) return;
+        const fetchActiveSenders = async () => {
+            if (!adminData.dprtmnt_id) return;
 
-        try {
-        const res = await axios.get(
-            `http://localhost:5000/api/email-templates/active-senders?department_id=${adminData.dprtmnt_id}`
-        );
-        if (res.data.length > 0) {
-            setEmailSender(res.data[0].sender_name);
-        }
-        } catch (err) {
-        console.error("Error fetching active senders:", err);
-        }
-    };
+            try {
+                const res = await axios.get(
+                    `http://localhost:5000/api/email-templates/active-senders?department_id=${adminData.dprtmnt_id}`
+                );
+                if (res.data.length > 0) {
+                    setEmailSender(res.data[0].sender_name);
+                }
+            } catch (err) {
+                console.error("Error fetching active senders:", err);
+            }
+        };
 
-    fetchActiveSenders();
+        fetchActiveSenders();
     }, [user, adminData.dprtmnt_id]);
 
 
@@ -111,18 +111,18 @@ const [emailSender, setEmailSender] = useState("");
     const [curriculumOptions, setCurriculumOptions] = useState([]);
 
     useEffect(() => {
+        if (!adminData.dprtmnt_id) return;
         const fetchCurriculums = async () => {
             try {
-                const response = await axios.get("http://localhost:5000/api/applied_program");
-                console.log("✅ curriculumOptions:", response.data); // <--- add this
+                const response = await axios.get(`http://localhost:5000/api/applied_program/${adminData.dprtmnt_id}`);
+                console.log("✅ curriculumOptions:", response.data);
                 setCurriculumOptions(response.data);
             } catch (error) {
                 console.error("Error fetching curriculum options:", error);
             }
         };
-
         fetchCurriculums();
-    }, []);
+    }, [adminData.dprtmnt_id]);
 
 
     useEffect(() => {
@@ -446,14 +446,47 @@ const [emailSender, setEmailSender] = useState("");
         }
     };
 
-    // handleSendEmails
     const handleSendEmails = () => {
         if (!selectedSchedule) {
             setSnack({ open: true, message: "Please select a schedule first.", severity: "warning" });
             return;
         }
-        setConfirmOpen(true);
+
+        const sched = schedules.find(s => s.schedule_id === selectedSchedule);
+        if (!sched) {
+            setSnack({ open: true, message: "Schedule not found.", severity: "error" });
+            return;
+        }
+
+        const formattedStart = new Date(`1970-01-01T${sched.start_time}`).toLocaleTimeString("en-US", {
+            hour: "numeric",
+            minute: "2-digit",
+            hour12: true
+        });
+        const formattedEnd = new Date(`1970-01-01T${sched.end_time}`).toLocaleTimeString("en-US", {
+            hour: "numeric",
+            minute: "2-digit",
+            hour12: true
+        });
+
+        // 📝 Pre-fill the message before opening the dialog
+        setEmailMessage(
+            `Dear {first_name} {last_name},
+
+You are scheduled for an interview on:
+
+📅 Date: ${sched.day_description}
+🏢 Building: ${sched.building_description}
+🏫 Room: ${sched.room_description}
+🕒 Time: ${formattedStart} - ${formattedEnd}
+👤 Interviewer: ${sched.interviewer}
+
+Please bring the following requirements:`
+        );
+
+        setConfirmOpen(true); // finally open the dialog
     };
+
 
     const confirmSendEmails = () => {
         setConfirmOpen(false);
@@ -528,16 +561,30 @@ const [emailSender, setEmailSender] = useState("");
     const [selectedDepartmentFilter, setSelectedDepartmentFilter] = useState("");
     const [selectedProgramFilter, setSelectedProgramFilter] = useState("");
     const [department, setDepartment] = useState([]);
+    const [minScore, setMinScore] = useState("");
+    const [maxScore, setMaxScore] = useState("");
+    const [exactRating, setExactRating] = useState("");
 
 
     // ✅ Step 1: Filtering
     const filteredPersons = persons.filter((personData) => {
+        const finalRating = Number(personData.final_rating) || 0;
+
+        // ✅ Score range filter
+        const matchesScore =
+            (minScore === "" || finalRating >= Number(minScore)) &&
+            (maxScore === "" || finalRating <= Number(maxScore));
+
+        // ✅ Exact score filter
+        const matchesExactRating =
+            exactRating === "" || finalRating === Number(exactRating);
+
         const query = searchQuery.toLowerCase();
         const fullName = `${personData.first_name ?? ""} ${personData.middle_name ?? ""} ${personData.last_name ?? ""}`.toLowerCase();
 
         const matchesApplicantID = personData.applicant_number?.toString().toLowerCase().includes(query);
         const matchesName = fullName.includes(query);
-        const matchesEmail = personData.emailAddress?.toLowerCase().includes(query); // ✅ included
+        const matchesEmail = personData.emailAddress?.toLowerCase().includes(query);
 
         const programInfo = allCurriculums.find(
             (opt) => opt.curriculum_id?.toString() === personData.program?.toString()
@@ -554,20 +601,21 @@ const [emailSender, setEmailSender] = useState("");
         const schoolYear = schoolYears.find((sy) => sy.year_id === selectedSchoolYear);
 
         const matchesSchoolYear =
-            selectedSchoolYear === "" || (schoolYear && (String(applicantAppliedYear) === String(schoolYear.current_year)))
+            selectedSchoolYear === "" || (schoolYear && (String(applicantAppliedYear) === String(schoolYear.current_year)));
 
         return (
             (matchesApplicantID || matchesName || matchesEmail || matchesProgramQuery) &&
             matchesDepartment &&
             matchesProgramFilter &&
-            matchesSchoolYear
+            matchesSchoolYear &&
+            matchesScore &&
+            matchesExactRating // ✅ new exact filter
         );
     });
 
 
     const sortedPersons = [...filteredPersons].sort((a, b) => {
         if (sortBy === "name") {
-            // ✅ sort by last name first, then first + middle
             const nameA = `${a.last_name ?? ""} ${a.first_name ?? ""} ${a.middle_name ?? ""}`.toLowerCase();
             const nameB = `${b.last_name ?? ""} ${b.first_name ?? ""} ${b.middle_name ?? ""}`.toLowerCase();
             return sortOrder === "asc" ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
@@ -585,8 +633,15 @@ const [emailSender, setEmailSender] = useState("");
             return sortOrder === "asc" ? emailA.localeCompare(emailB) : emailB.localeCompare(emailA);
         }
 
+        if (sortBy === "final_rating") {
+            const ratingA = Number(a.final_rating) || 0;
+            const ratingB = Number(b.final_rating) || 0;
+            return sortOrder === "asc" ? ratingA - ratingB : ratingB - ratingA;
+        }
+
         return 0;
     });
+
 
     // ✅ Step 3: Pagination (use sortedPersons instead of filteredPersons)
     const totalPages = Math.ceil(sortedPersons.length / itemsPerPage);
@@ -596,22 +651,37 @@ const [emailSender, setEmailSender] = useState("");
 
 
     useEffect(() => {
+        if (!adminData.dprtmnt_id) return;
         const fetchDepartments = async () => {
             try {
-                const response = await axios.get("http://localhost:5000/api/departments"); // ✅ Update if needed
+                const response = await axios.get(`http://localhost:5000/api/departments/${adminData.dprtmnt_id}`); // ✅ Update if needed
                 setDepartment(response.data);
             } catch (error) {
                 console.error("Error fetching departments:", error);
             }
         };
-
         fetchDepartments();
-    }, []);
+    }, [adminData.dprtmnt_id]);
 
+    const handleDepartmentChange = (selectedDept) => {
+        setSelectedDepartmentFilter(selectedDept);
+        if (!selectedDept) {
+            setCurriculumOptions(allCurriculums);
+        } else {
+            setCurriculumOptions(
+                allCurriculums.filter(opt => opt.dprtmnt_name === selectedDept)
+            );
+        }
+        setSelectedProgramFilter("");
+    };
 
-
-
-
+    useEffect(() => {
+        if (department.length > 0 && !selectedDepartmentFilter) {
+            const firstDept = department[0].dprtmnt_name;
+            setSelectedDepartmentFilter(firstDept);
+            handleDepartmentChange(firstDept);
+        }
+    }, [department, selectedDepartmentFilter]);
 
     const maxButtonsToShow = 5;
     let startPage = Math.max(1, currentPage - Math.floor(maxButtonsToShow / 2));
@@ -631,6 +701,7 @@ const [emailSender, setEmailSender] = useState("");
             setCurrentPage(totalPages || 1);
         }
     }, [filteredPersons.length, totalPages]);
+
 
 
 
@@ -877,6 +948,7 @@ const [emailSender, setEmailSender] = useState("");
                                     <MenuItem value="name">Applicant's Name</MenuItem>
                                     <MenuItem value="id">Applicant ID</MenuItem>
                                     <MenuItem value="email">Email Address</MenuItem>
+                                    <MenuItem value="final_rating">Final Rating</MenuItem> {/* ✅ New */}
                                 </Select>
                             </FormControl>
                         </Box>
@@ -896,6 +968,9 @@ const [emailSender, setEmailSender] = useState("");
                                 </Select>
                             </FormControl>
                         </Box>
+
+                        {/* Sort Order */}
+                   
                     </Box>
 
 
@@ -941,12 +1016,17 @@ const [emailSender, setEmailSender] = useState("");
 
                         <Button
                             variant="contained"
-                            color="success"
-                            onClick={handleSendEmails}
+                            color="primary"
+
                             sx={{ minWidth: 150 }}
+                            onClick={() => {
+                                setSelectedApplicants(new Set([id])); // pick only this applicant
+                                handleSendEmails();                   // 🟢 pre-fill message & open dialog
+                            }}
                         >
-                            Send Emails
+                            Send Email
                         </Button>
+
                     </Box>
 
                 </Box>
@@ -954,6 +1034,20 @@ const [emailSender, setEmailSender] = useState("");
                 {/* === Filters Row: Department + Program + School Year + Semester === */}
                 <Box display="flex" alignItems="center" gap={3} mb={2} flexWrap="wrap">
                     {/* Department Filter */}
+                         <Box display="flex" alignItems="center" gap={1}>
+                            <Typography fontSize={13} sx={{ minWidth: "80px", textAlign: "right" }}>
+                                Exam Rating:
+                            </Typography>
+                            <TextField
+                                type="number"
+                                size="small"
+                                label="Input Rating"
+                                value={exactRating}
+                                onChange={(e) => setExactRating(e.target.value)}
+                                sx={{ width: 150 }}
+                            />
+
+                        </Box>
                     <Box display="flex" alignItems="center" gap={1}>
                         <Typography fontSize={13} sx={{ minWidth: "70px" }}>Department:</Typography>
                         <FormControl size="small" sx={{ width: "250px" }}>
@@ -966,7 +1060,6 @@ const [emailSender, setEmailSender] = useState("");
                                 }}
                                 displayEmpty
                             >
-                                <MenuItem value="">All Departments</MenuItem>
                                 {department.map((dep) => (
                                     <MenuItem key={dep.dprtmnt_id} value={dep.dprtmnt_name}>
                                         {dep.dprtmnt_name} ({dep.dprtmnt_code})
@@ -1224,53 +1317,97 @@ const [emailSender, setEmailSender] = useState("");
                             <TableCell sx={{ color: "white", textAlign: "center", fontSize: "12px", color: "maroon", border: "2px solid maroon" }}>Name</TableCell>
                             <TableCell sx={{ color: "white", textAlign: "center", fontSize: "12px", color: "maroon", border: "2px solid maroon" }}>Program</TableCell>
                             <TableCell sx={{ color: "white", textAlign: "center", fontSize: "12px", color: "maroon", border: "2px solid maroon" }}>Email Address</TableCell>
+                            <TableCell sx={{ color: "white", textAlign: "center", fontSize: "12px", color: "maroon", border: "2px solid maroon" }}>Final Rating</TableCell>
                             <TableCell sx={{ color: "white", textAlign: "center", fontSize: "12px", color: "maroon", border: "2px solid maroon" }}>Action</TableCell>
                         </TableRow>
                     </TableHead>
                     <TableBody>
                         {currentPersons.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={6} sx={{ textAlign: "center", p: 2 }}>
+                                <TableCell colSpan={7} sx={{ textAlign: "center", p: 2 }}>
                                     No applicants found.
                                 </TableCell>
                             </TableRow>
                         ) : (
-                            currentPersons.map((person, index) => {
-                                const id = person.applicant_number;
-                                const isAssigned = person.schedule_id !== null;
-                                const isSelected = selectedApplicants.has(id);
+                            currentPersons.map((person, idx) => {
+                                const finalRating = Number(person.final_rating) || 0; // ✅ use backend value
+                                const applicantId = person.applicant_number;
+                                const isAssigned = !!person.schedule_id; // ✅ check if already assigned
 
                                 return (
                                     <TableRow key={person.person_id}>
                                         {/* Auto-increment # */}
-                                        <TableCell sx={{ textAlign: "center", border: "1px solid maroon", borderLeft: "2px solid maroon", fontSize: "12px" }}>
-                                            {indexOfFirstItem + index + 1}
+                                        <TableCell
+                                            sx={{
+                                                textAlign: "center",
+                                                border: "1px solid maroon",
+                                                borderLeft: "2px solid maroon",
+                                                fontSize: "12px",
+                                            }}
+                                        >
+                                            {indexOfFirstItem + idx + 1}
                                         </TableCell>
 
                                         {/* Applicant ID */}
-                                        <TableCell sx={{ textAlign: "center", border: "1px solid maroon", fontSize: "12px" }}>
-                                            {person.applicant_number ?? "N/A"}
+                                        <TableCell
+                                            sx={{
+                                                textAlign: "center",
+                                                border: "1px solid maroon",
+                                                fontSize: "12px",
+                                            }}
+                                        >
+                                            {applicantId ?? "N/A"}
                                         </TableCell>
 
                                         {/* Applicant Name */}
-                                        <TableCell sx={{ textAlign: "left", border: "1px solid maroon", fontSize: "12px" }}>
+                                        <TableCell
+                                            sx={{
+                                                textAlign: "left",
+                                                border: "1px solid maroon",
+                                                fontSize: "12px",
+                                            }}
+                                        >
                                             {`${person.last_name}, ${person.first_name} ${person.middle_name ?? ""} ${person.extension ?? ""}`}
                                         </TableCell>
 
                                         {/* Program */}
-                                        <TableCell sx={{ textAlign: "center", border: "1px solid maroon", fontSize: "12px" }}>
+                                        <TableCell
+                                            sx={{
+                                                textAlign: "center",
+                                                border: "1px solid maroon",
+                                                fontSize: "12px",
+                                            }}
+                                        >
                                             {curriculumOptions.find(
-                                                (item) => item.curriculum_id?.toString() === person.program?.toString()
+                                                (item) =>
+                                                    item.curriculum_id?.toString() ===
+                                                    person.program?.toString()
                                             )?.program_code ?? "N/A"}
                                         </TableCell>
 
                                         {/* Email */}
-                                        <TableCell sx={{ textAlign: "center", border: "1px solid maroon", fontSize: "12px" }}>
+                                        <TableCell
+                                            sx={{
+                                                textAlign: "center",
+                                                border: "1px solid maroon",
+                                                fontSize: "12px",
+                                            }}
+                                        >
                                             {person.emailAddress ?? "N/A"}
                                         </TableCell>
 
-                                        {/* Action Buttons (from AssignScheduleToApplicants) */}
-                                        {/* Action Buttons (from AssignScheduleToApplicants) */}
+                                        {/* Final Rating */}
+                                        <TableCell
+                                            sx={{
+                                                textAlign: "center",
+                                                border: "1px solid maroon",
+                                                fontSize: "12px",
+                                            }}
+                                        >
+                                            {finalRating.toFixed(2)}
+                                        </TableCell>
+
+                                        {/* Action Buttons */}
                                         <TableCell
                                             sx={{
                                                 textAlign: "center",
@@ -1279,23 +1416,23 @@ const [emailSender, setEmailSender] = useState("");
                                             }}
                                         >
                                             {!isAssigned ? (
-                                                // ✅ Not assigned → Assign only
                                                 <Button
                                                     variant="outlined"
                                                     color="success"
                                                     size="small"
-                                                    onClick={() => handleAssignSingle(id)} // new helper for 1 applicant
+                                                    onClick={() => handleAssignSingle(applicantId)} // ✅ use applicantId
                                                 >
                                                     Assign
                                                 </Button>
                                             ) : (
-                                                // ✅ Already assigned → show Unassign + Send Email
                                                 <Box display="flex" gap={1} justifyContent="center">
                                                     <Button
                                                         variant="contained"
                                                         color="error"
                                                         size="small"
-                                                        onClick={() => handleUnassignImmediate(id)}
+                                                        onClick={() =>
+                                                            handleUnassignImmediate(applicantId)
+                                                        } // ✅ use applicantId
                                                     >
                                                         Unassign
                                                     </Button>
@@ -1304,8 +1441,8 @@ const [emailSender, setEmailSender] = useState("");
                                                         color="primary"
                                                         size="small"
                                                         onClick={() => {
-                                                            setConfirmOpen(true);                // open confirmation dialog
-                                                            setSelectedApplicants(new Set([id])); // pick only this applicant
+                                                            setSelectedApplicants(new Set([applicantId])); // ✅ use applicantId
+                                                            handleSendEmails();
                                                         }}
                                                     >
                                                         Send Email
@@ -1313,12 +1450,12 @@ const [emailSender, setEmailSender] = useState("");
                                                 </Box>
                                             )}
                                         </TableCell>
-
                                     </TableRow>
                                 );
                             })
                         )}
                     </TableBody>
+
 
 
 
@@ -1344,7 +1481,7 @@ const [emailSender, setEmailSender] = useState("");
             <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)} maxWidth="md" fullWidth>
                 <DialogTitle>Edit & Send Email</DialogTitle>
                 <DialogContent>
-                    <TextField fullWidth value={emailSender}/>
+                    <TextField fullWidth value={emailSender} />
 
                     <TextField
                         fullWidth
@@ -1361,6 +1498,7 @@ const [emailSender, setEmailSender] = useState("");
                         multiline
                         rows={10}
                     />
+
                     <Typography variant="caption" color="gray">
                         🔑 Available placeholders: {"{first_name}, {last_name}, {applicant_number}, {day}, {room}, {start_time}, {end_time}"}
                     </Typography>

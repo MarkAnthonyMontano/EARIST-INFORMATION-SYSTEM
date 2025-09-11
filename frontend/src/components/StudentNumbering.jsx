@@ -44,7 +44,7 @@ const StudentNumbering = () => {
         { label: "Applicant Form", to: "/admin_dashboard1", icon: <PersonIcon /> },
         { label: "Documents Submitted", to: "/student_requirements", icon: <DescriptionIcon /> },
         { label: "Entrance Examination Scores", to: "/applicant_scoring", icon: <SchoolIcon /> },
-        { label: "Qualifying Examination Scores", to: "/qualifying_exam_scores", icon: <FactCheckIcon /> },
+        { label: "Qualifying / Interview Examination Scores", to: "/qualifying_exam_scores", icon: <FactCheckIcon /> },
         { label: "College Approval", to: "/college_approval", icon: <CheckCircleIcon /> },
         { label: "Medical Clearance", to: "/medical_clearance", icon: <LocalHospitalIcon /> },
         { label: "Student Numbering", to: "/student_numbering", icon: <HowToRegIcon /> },
@@ -193,23 +193,23 @@ const StudentNumbering = () => {
         setSnack(prev => ({ ...prev, open: false }));
     };
 
-     // 🔒 Disable right-click
-  document.addEventListener('contextmenu', (e) => e.preventDefault());
+    // 🔒 Disable right-click
+    document.addEventListener('contextmenu', (e) => e.preventDefault());
 
-  // 🔒 Block DevTools shortcuts + Ctrl+P silently
-  document.addEventListener('keydown', (e) => {
-    const isBlockedKey =
-      e.key === 'F12' || // DevTools
-      e.key === 'F11' || // Fullscreen
-      (e.ctrlKey && e.shiftKey && (e.key.toLowerCase() === 'i' || e.key.toLowerCase() === 'j')) || // Ctrl+Shift+I/J
-      (e.ctrlKey && e.key.toLowerCase() === 'u') || // Ctrl+U (View Source)
-      (e.ctrlKey && e.key.toLowerCase() === 'p');   // Ctrl+P (Print)
+    // 🔒 Block DevTools shortcuts + Ctrl+P silently
+    document.addEventListener('keydown', (e) => {
+        const isBlockedKey =
+            e.key === 'F12' || // DevTools
+            e.key === 'F11' || // Fullscreen
+            (e.ctrlKey && e.shiftKey && (e.key.toLowerCase() === 'i' || e.key.toLowerCase() === 'j')) || // Ctrl+Shift+I/J
+            (e.ctrlKey && e.key.toLowerCase() === 'u') || // Ctrl+U (View Source)
+            (e.ctrlKey && e.key.toLowerCase() === 'p');   // Ctrl+P (Print)
 
-    if (isBlockedKey) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-  });
+        if (isBlockedKey) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+    });
 
 
 
