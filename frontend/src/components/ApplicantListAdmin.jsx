@@ -18,6 +18,11 @@ import {
     InputLabel,
     Checkbox,
     TableBody,
+    Dialog,
+    DialogTitle,
+    DialogContent,
+    FormControlLabel,
+    DialogActions
 } from '@mui/material';
 import { Search } from '@mui/icons-material';
 import { io } from "socket.io-client";
@@ -38,13 +43,24 @@ import ListAltIcon from "@mui/icons-material/ListAlt";
 import SchoolIcon from '@mui/icons-material/School';        // For Entrance Examination Scores
 import FactCheckIcon from '@mui/icons-material/FactCheck';  // For Qualifying Examination Scores
 
+
+
 const socket = io("http://localhost:5000");
 
-const AdmissionProcessForCollege = () => {
+const ApplicantList = () => {
+    const documentOptions = [
+        { label: 'PSA Birth Certificate', key: 'BirthCertificate' },
+        { label: 'Form 138 (4th Quarter / No failing Grades)', key: 'Form138' },
+        { label: 'Certificate of Good Moral Character', key: 'GoodMoralCharacter' },
+        { label: 'Certificate Belonging to Graduating Class', key: 'CertificateOfGraduatingClass' },
+        { label: 'Copy of Vaccine Card (1st and 2nd Dose)', key: 'VaccineCard' }
+    ];
+
+
     const location = useLocation();
     const queryParams = new URLSearchParams(location.search);
     const queryPersonId = (queryParams.get("person_id") || "").trim();
-     
+
     const handleRowClick = (person_id) => {
         if (!person_id) return;
 
@@ -61,12 +77,12 @@ const AdmissionProcessForCollege = () => {
         { label: "Applicant Form", to: "/admin_dashboard1", icon: <PersonIcon /> },
         { label: "Documents Submitted", to: "/student_requirements", icon: <DescriptionIcon /> },
         { label: "Entrance Examination Scores", to: "/applicant_scoring", icon: <SchoolIcon /> },
-        { label: "Qualifying Examination Scores", to: "/qualifying_exam_scores", icon: <FactCheckIcon /> },
+        { label: "Qualifying / Interview Examination Scores", to: "/qualifying_exam_scores", icon: <FactCheckIcon /> },
         { label: "College Approval", to: "/college_approval", icon: <CheckCircleIcon /> },
         { label: "Medical Clearance", to: "/medical_clearance", icon: <LocalHospitalIcon /> },
         { label: "Student Numbering", to: "/student_numbering", icon: <HowToRegIcon /> },
     ];
-    
+
     const navigate = useNavigate();
     const [activeStep, setActiveStep] = useState(0);
     const [clickedSteps, setClickedSteps] = useState(Array(tabs1.length).fill(false));
@@ -125,18 +141,18 @@ const AdmissionProcessForCollege = () => {
     }, [queryPersonId]);
 
     const fetchPersonData = async () => {
-    try {
-        const res = await axios.get(`http://localhost:5000/api/admin_data/${user}`);
-        setAdminData(res.data); // { dprtmnt_id: "..." }
-    } catch (err) {
-        console.error("Error fetching admin data:", err);
-    }
+        try {
+            const res = await axios.get(`http://localhost:5000/api/admin_data/${user}`);
+            setAdminData(res.data); // { dprtmnt_id: "..." }
+        } catch (err) {
+            console.error("Error fetching admin data:", err);
+        }
     };
 
     useEffect(() => {
-    if (user) {
-        fetchPersonData();
-    }
+        if (user) {
+            fetchPersonData();
+        }
     }, [user]);
 
     const [error, setError] = useState('');
@@ -233,7 +249,7 @@ const AdmissionProcessForCollege = () => {
         const fetchCurriculums = async () => {
             try {
                 const response = await axios.get(`http://localhost:5000/api/applied_program/${adminData.dprtmnt_id}`);
-                console.log("✅ curriculumOptions:", response.data); 
+                console.log("✅ curriculumOptions:", response.data);
                 setCurriculumOptions(response.data);
             } catch (error) {
                 console.error("Error fetching curriculum options:", error);
@@ -271,6 +287,8 @@ const AdmissionProcessForCollege = () => {
             .then((res) => setSchoolSemester(res.data))
             .catch((err) => console.error(err));
     }, [])
+
+
 
     const handleSchoolYearChange = (event) => {
         setSelectedSchoolYear(event.target.value);
@@ -410,9 +428,11 @@ const AdmissionProcessForCollege = () => {
     }, []);
 
     useEffect(() => {
+        if (!adminData.dprtmnt_id) return;
+
         const fetchDepartments = async () => {
             try {
-                const response = await axios.get("http://localhost:5000/api/departments"); // ✅ Update if needed
+                const response = await axios.get(`http://localhost:5000/api/departments/${adminData.dprtmnt_id}`); // ✅ Update if needed
                 setDepartment(response.data);
             } catch (error) {
                 console.error("Error fetching departments:", error);
@@ -420,7 +440,7 @@ const AdmissionProcessForCollege = () => {
         };
 
         fetchDepartments();
-    }, []);
+    }, [adminData.dprtmnt_id]);
 
 
     useEffect(() => {
@@ -454,6 +474,57 @@ const AdmissionProcessForCollege = () => {
     }, []);
 
 
+    const [openDialog, setOpenDialog] = useState(false);
+    const [activePerson, setActivePerson] = useState(null);
+    const [selected, setSelected] = useState([]);
+
+
+    useEffect(() => {
+        if (activePerson?.missing_documents) {
+            try {
+                setSelected(activePerson.missing_documents || []);
+            } catch {
+                setSelected([]);
+            }
+        } else {
+            setSelected([]);
+        }
+    }, [activePerson]);
+
+    const handleOpenDialog = (person) => {
+        setActivePerson(person);
+        setOpenDialog(true);
+    };
+
+    const handleCloseDialog = () => {
+        setActivePerson(null);
+        setOpenDialog(false);
+    };
+
+    const handleSaveMissingDocs = async () => {
+        try {
+            await axios.put(
+                `http://localhost:5000/api/missing-documents/${activePerson.person_id}`,
+                {
+                    missing_documents: selected,   // this is your array of checked keys
+
+                }
+            );
+
+            setSnack({
+                open: true,
+                message: "Missing documents saved!",
+                severity: "success",
+            });
+
+            fetchApplicants(); // reload table
+            setOpenDialog(false);
+        } catch (err) {
+            console.error("❌ Error saving missing docs:", err);
+            alert("Failed to save missing documents");
+        }
+    };
+
     const handleSnackClose = (_, reason) => {
         if (reason === 'clickaway') return;
         setSnack(prev => ({ ...prev, open: false }));
@@ -468,6 +539,14 @@ const AdmissionProcessForCollege = () => {
                 setCurriculumOptions(res.data);
             });
     }, []);
+
+    useEffect(() => {
+        if (department.length > 0 && !selectedDepartmentFilter) {
+            const firstDept = department[0].dprtmnt_name;
+            setSelectedDepartmentFilter(firstDept);
+            handleDepartmentChange(firstDept); // if you also want to trigger it
+        }
+    }, [department, selectedDepartmentFilter]);
 
     const handleDepartmentChange = (selectedDept) => {
         setSelectedDepartmentFilter(selectedDept);
@@ -615,31 +694,13 @@ const AdmissionProcessForCollege = () => {
         newWin.document.close();
     };
 
- // 🔒 Disable right-click
-  document.addEventListener('contextmenu', (e) => e.preventDefault());
-
-  // 🔒 Block DevTools shortcuts + Ctrl+P silently
-  document.addEventListener('keydown', (e) => {
-    const isBlockedKey =
-      e.key === 'F12' || // DevTools
-      e.key === 'F11' || // Fullscreen
-      (e.ctrlKey && e.shiftKey && (e.key.toLowerCase() === 'i' || e.key.toLowerCase() === 'j')) || // Ctrl+Shift+I/J
-      (e.ctrlKey && e.key.toLowerCase() === 'u') || // Ctrl+U (View Source)
-      (e.ctrlKey && e.key.toLowerCase() === 'p');   // Ctrl+P (Print)
-
-    if (isBlockedKey) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-  });
-
 
 
     return (
         <Box sx={{ height: 'calc(100vh - 150px)', overflowY: 'auto', pr: 1, p: 2 }}>
             <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
                 <Typography variant="h4" fontWeight="bold" color="maroon">
-                    ADMISSION PROCESS FOR COLLEGE
+                    ADMISSION PROCESS FOR REGISTRAR
                 </Typography>
                 <Box sx={{ position: 'absolute', top: 10, right: 24 }}>
                     <Button
@@ -1194,7 +1255,6 @@ const AdmissionProcessForCollege = () => {
                                     }}
                                     displayEmpty
                                 >
-                                    <MenuItem value="">All Departments</MenuItem>
                                     {department.map((dep) => (
                                         <MenuItem key={dep.dprtmnt_id} value={dep.dprtmnt_name}>
                                             {dep.dprtmnt_name} ({dep.dprtmnt_code})
@@ -1241,10 +1301,10 @@ const AdmissionProcessForCollege = () => {
                             <TableCell sx={{ color: "white", textAlign: "center", width: "3%", py: 0.5, fontSize: "12px", border: "1px solid maroon" }}>
                                 Submitted Orig Documents
                             </TableCell>
-                            <TableCell sx={{ color: "white", textAlign: "center", width: "8%", py: 0.5, fontSize: "12px", border: "1px solid maroon" }}>
+                            <TableCell sx={{ color: "white", textAlign: "center", width: "4%", py: 0.5, fontSize: "12px", border: "1px solid maroon" }}>
                                 Applicant ID
                             </TableCell>
-                            <TableCell sx={{ color: "white", textAlign: "center", width: "30%", py: 0.5, fontSize: "12px", border: "1px solid maroon" }}>
+                            <TableCell sx={{ color: "white", textAlign: "center", width: "25%", py: 0.5, fontSize: "12px", border: "1px solid maroon" }}>
                                 Name
                             </TableCell>
                             <TableCell sx={{ color: "white", textAlign: "center", width: "10%", py: 0.5, fontSize: "12px", border: "1px solid maroon" }}>
@@ -1262,41 +1322,46 @@ const AdmissionProcessForCollege = () => {
                             <TableCell sx={{ color: "white", textAlign: "center", width: "16%", py: 0.5, fontSize: "12px", border: "1px solid maroon" }}>
                                 Applicant Status
                             </TableCell>
+                            <TableCell sx={{ color: "white", textAlign: "center", width: "15%", py: 0.5, fontSize: "12px", border: "1px solid maroon" }}>
+                                Remarks
+                            </TableCell>
                             <TableCell sx={{ color: "white", textAlign: "center", width: "8%", py: 0.5, fontSize: "12px", border: "1px solid maroon", borderRight: "2px solid maroon" }}>
                                 Registrar Status
                             </TableCell>
                         </TableRow>
                     </TableHead>
-
                     <TableBody>
                         {currentPersons.map((person, index) => (
                             <TableRow key={person.person_id}>
                                 {/* # */}
-                                <TableCell
-                                    sx={{
-                                        color: "black",
-                                        textAlign: "center",
-                                        border: "1px solid maroon",
-                                        borderLeft: "2px solid maroon",
-                                        py: 0.5,
-                                        fontSize: "12px",
-                                    }}
-                                >
+                                <TableCell sx={{ textAlign: "center", border: "1px solid maroon" }}>
                                     {index + 1}
                                 </TableCell>
 
-                                {/* Checkbox */}
-                                <TableCell sx={{ textAlign: "center", border: "1px solid maroon", py: 0.5 }}>
+                                {/* ✅ Submitted Checkbox */}
+                                <TableCell sx={{ textAlign: "center", border: "1px solid maroon" }}>
                                     <Checkbox
-                                    disabled
-                                        checked={person.submitted_documents === 1}
-                                        onChange={(e) =>
-                                            handleSubmittedDocumentsChange(
+                                     disabled
+                                        checked={Number(person.submitted_documents) === 1}
+                                        onChange={async (e) => {
+                                            const checked = e.target.checked;
+
+                                            // Optimistically update UI first
+                                            setPersons((prev) =>
+                                                prev.map((p) =>
+                                                    p.person_id === person.person_id
+                                                        ? { ...p, submitted_documents: checked ? 1 : 0 }
+                                                        : p
+                                                )
+                                            );
+
+                                            // Then update backend
+                                            await handleSubmittedDocumentsChange(
                                                 person.upload_id,
-                                                e.target.checked,
+                                                checked,
                                                 person.person_id
-                                            )
-                                        }
+                                            );
+                                        }}
                                         sx={{
                                             color: "maroon",
                                             "&.Mui-checked": { color: "maroon" },
@@ -1306,16 +1371,10 @@ const AdmissionProcessForCollege = () => {
                                     />
                                 </TableCell>
 
+
                                 {/* Applicant Number */}
                                 <TableCell
-                                    sx={{
-                                        color: "blue",
-                                        textAlign: "center",
-                                        border: "1px solid maroon",
-                                        py: 0.5,
-                                        fontSize: "12px",
-                                        cursor: "pointer",
-                                    }}
+                                    sx={{ textAlign: "center", border: "1px solid maroon", cursor: "pointer", color:"blue" }}
                                     onClick={() => handleRowClick(person.person_id)}
                                 >
                                     {person.applicant_number ?? "N/A"}
@@ -1323,71 +1382,31 @@ const AdmissionProcessForCollege = () => {
 
                                 {/* Applicant Name */}
                                 <TableCell
-                                    sx={{
-                                        color: "blue",
-                                        textAlign: "left",
-                                        border: "1px solid maroon",
-                                        py: 0.5,
-                                        fontSize: "12px",
-                                        cursor: "pointer",
-                                    }}
+                                    sx={{ textAlign: "left", border: "1px solid maroon", cursor: "pointer", color:"blue"  }}
                                     onClick={() => handleRowClick(person.person_id)}
                                 >
-                                    {`${person.last_name}, ${person.first_name} ${person.middle_name ?? ""} ${person.extension ?? ""
-                                        }`}
+                                    {`${person.last_name}, ${person.first_name} ${person.middle_name ?? ""} ${person.extension ?? ""}`}
                                 </TableCell>
 
                                 {/* Program */}
-                                <TableCell
-                                    sx={{
-                                        color: "black",
-                                        textAlign: "center",
-                                        border: "1px solid maroon",
-                                        py: 0.5,
-                                        fontSize: "12px",
-                                    }}
-                                >
+                                <TableCell sx={{ textAlign: "center", border: "1px solid maroon" }}>
                                     {curriculumOptions.find(
                                         (item) => item.curriculum_id?.toString() === person.program?.toString()
                                     )?.program_code ?? "N/A"}
                                 </TableCell>
 
                                 {/* SHS GWA */}
-                                <TableCell
-                                    sx={{
-                                        color: "black",
-                                        textAlign: "center",
-                                        border: "1px solid maroon",
-                                        py: 0.5,
-                                        fontSize: "12px",
-                                    }}
-                                >
+                                <TableCell sx={{ textAlign: "center", border: "1px solid maroon" }}>
                                     {person.generalAverage1}
                                 </TableCell>
 
                                 {/* Created Date */}
-                                <TableCell
-                                    sx={{
-                                        color: "black",
-                                        textAlign: "center",
-                                        border: "1px solid maroon",
-                                        py: 0.5,
-                                        fontSize: "12px",
-                                    }}
-                                >
+                                <TableCell sx={{ textAlign: "center", border: "1px solid maroon" }}>
                                     {person.created_at}
                                 </TableCell>
 
                                 {/* Last Updated */}
-                                <TableCell
-                                    sx={{
-                                        color: "black",
-                                        textAlign: "center",
-                                        border: "1px solid maroon",
-                                        py: 0.5,
-                                        fontSize: "12px",
-                                    }}
-                                >
+                                <TableCell sx={{ textAlign: "center", border: "1px solid maroon" }}>
                                     {person.last_updated
                                         ? new Date(person.last_updated).toLocaleDateString("en-PH", {
                                             year: "numeric",
@@ -1398,90 +1417,63 @@ const AdmissionProcessForCollege = () => {
                                 </TableCell>
 
                                 {/* Status */}
-                                <TableCell
-                                    sx={{
-                                        color: "black",
-                                        textAlign: "center",
-                                        border: "1px solid maroon",
-                                        py: 0.5,
-                                        fontSize: "12px",
-                                    }}
-                                >
+                                <TableCell sx={{ textAlign: "center", border: "1px solid maroon" }}>
                                     {person.document_status}
                                 </TableCell>
 
+                                {/* 📋 Missing Docs Button */}
+                                {/* 📋 Missing Docs Button */}
+                                <TableCell sx={{ textAlign: "center", border: "1px solid maroon" }}>
+                                    <Button
+                                        variant="outlined"
+                                        size="small"
+                                        onClick={() => handleOpenDialog(person)}
+                                        sx={{
+                                            backgroundColor:
+                                                Array.isArray(person.missing_documents) && person.missing_documents.length > 0
+                                                    ? "#FFD580" // orange if has missing documents
+                                                    : "#D6F0FF", // light blue if none
+                                            borderColor: "maroon",
+                                            color: "black",
+                                            fontWeight: "bold",
+                                            "&:hover": {
+                                                backgroundColor:
+                                                    Array.isArray(person.missing_documents) && person.missing_documents.length > 0
+                                                        ? "#FFC04D"
+                                                        : "#B9E3FF",
+                                            },
+                                        }}
+                                    >
+                                        📋 Missing Docs
+                                    </Button>
+                                </TableCell>
+
+
                                 {/* Registrar Status */}
-                                <TableCell
-                                    sx={{
-                                        textAlign: "center",
-                                        border: "1px solid maroon",
-                                        borderRight: "2px solid maroon",
-                                        py: 0.5,
-                                        fontSize: "12px",
-                                    }}
-                                >
+                                <TableCell sx={{ textAlign: "center", border: "1px solid maroon" }}>
                                     {person.registrar_status === 1 ? (
-                                        <Box
-                                       
-                                            sx={{
-                                                backgroundColor: "#4CAF50",
-                                                color: "white",
-                                                borderRadius: 1,
-                                                width: 250,
-                                                height: 30,
-                                                display: "flex",
-                                                alignItems: "center",
-                                                justifyContent: "center",
-                                                margin: "0 auto",
-                                            }}
-                                        >
+                                        <Box sx={{ background: "#4CAF50", color: "white", borderRadius: 1, p: 0.5 }}>
                                             <Typography sx={{ fontWeight: "bold" }}>Submitted</Typography>
                                         </Box>
                                     ) : person.registrar_status === 0 ? (
-                                        <Box
-                                            sx={{
-                                                backgroundColor: "#F44336",
-                                                color: "white",
-                                                borderRadius: 1,
-                                                width: 250,
-                                                height: 30,
-                                                display: "flex",
-                                                alignItems: "center",
-                                                justifyContent: "center",
-                                                margin: "0 auto",
-                                            }}
-                                        >
-                                            <Typography sx={{ fontWeight: "bold" }}>
-                                                Unsubmitted / Incomplete
-                                            </Typography>
+                                        <Box sx={{ background: "#F44336", color: "white", borderRadius: 1, p: 0.5 }}>
+                                            <Typography sx={{ fontWeight: "bold" }}>Unsubmitted / Incomplete</Typography>
                                         </Box>
                                     ) : (
                                         <Box display="flex" justifyContent="center" gap={1}>
                                             <Button
-                                            disabled
-                                                key={`submitted-${person.person_id}`}
+                                           disabled
                                                 variant="contained"
                                                 onClick={() => handleRegistrarStatusChange(person.person_id, 1)}
-                                                sx={{
-                                                    backgroundColor: "green",
-                                                    color: "white",
-                                                    width: 150,
-                                                    height: 30,
-                                                }}
+                                                sx={{ backgroundColor: "green", color: "white" }}
                                             >
                                                 Submitted
                                             </Button>
                                             <Button
-                                            disabled
-                                                key={`unsubmitted-${person.person_id}`}
+                                             disabled
                                                 variant="contained"
                                                 onClick={() => handleRegistrarStatusChange(person.person_id, 0)}
-                                                sx={{
-                                                    backgroundColor: "red",
-                                                    color: "white",
-                                                    width: 150,
-                                                    height: 30,
-                                                }}
+                                                sx={{ backgroundColor: "red", color: "white" }}
                                             >
                                                 Unsubmitted
                                             </Button>
@@ -1492,12 +1484,51 @@ const AdmissionProcessForCollege = () => {
                         ))}
                     </TableBody>
 
+                    <Dialog open={openDialog} onClose={handleCloseDialog}>
+                        <DialogTitle>Mark Missing Documents</DialogTitle>
+                        <DialogContent>
+                            {documentOptions.map((doc) => {
+                                const selectedArray = Array.isArray(activePerson?.missing_documents)
+                                    ? activePerson.missing_documents
+                                    : [];
+
+                                return (
+                                    <FormControlLabel
+                                        key={doc.key}
+                                        control={
+                                            <Checkbox
+                                             disabled
+                                                checked={selectedArray.includes(doc.key)}
+                                                onChange={(e) => {
+                                                    const updated = e.target.checked
+                                                        ? [...selectedArray, doc.key]
+                                                        : selectedArray.filter((x) => x !== doc.key);
+
+                                                    setActivePerson((prev) =>
+                                                        prev ? { ...prev, missing_documents: updated } : prev
+                                                    );
+                                                }}
+                                            />
+                                        }
+                                        label={doc.label}
+                                    />
+                                );
+                            })}
+
+                        </DialogContent>
+                        <DialogActions>
+                            <Button onClick={handleCloseDialog}>Cancel</Button>
+                            <Button variant="contained" onClick={handleSaveMissingDocs} sx={{ background: "maroon" }}>
+                                Save
+                            </Button>
+                        </DialogActions>
+                    </Dialog>
+
                 </Table>
             </TableContainer>
 
             <Snackbar
                 open={snack.open}
-
                 onClose={handleSnackClose}
                 anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
             >
@@ -1510,4 +1541,4 @@ const AdmissionProcessForCollege = () => {
     );
 };
 
-export default AdmissionProcessForCollege;
+export default ApplicantList;

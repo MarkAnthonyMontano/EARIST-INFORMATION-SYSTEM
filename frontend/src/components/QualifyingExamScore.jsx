@@ -1286,6 +1286,9 @@ const QualifyingExamScore = () => {
                             <TableCell sx={{ color: "white", textAlign: "center", width: "10%", py: 0.5, fontSize: "12px", border: "1px solid maroon" }}>
                                 Total Ave.
                             </TableCell>
+                              <TableCell sx={{ color: "white", textAlign: "center", width: "10%", py: 0.5, fontSize: "12px", border: "1px solid maroon" }}>
+                                Status
+                            </TableCell>
                             <TableCell sx={{ color: "white", textAlign: "center", width: "15%", py: 0.5, fontSize: "12px", border: "1px solid maroon" }}>
                                 User
                             </TableCell>
@@ -1404,6 +1407,19 @@ const QualifyingExamScore = () => {
                                     >
                                         {computedTotalAve.toFixed(2)}
                                     </TableCell>
+
+                                       <TableCell
+                                        sx={{
+                                            color: "black",
+                                            textAlign: "center",
+                                            border: "1px solid maroon",
+                                            py: 0.5,
+                                            fontSize: "15px",
+                                        }}
+                                    >
+                                        {computedTotalAve.toFixed(2)}
+                                    </TableCell>
+
 
                                     <TableCell
                                         sx={{

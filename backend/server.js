@@ -1157,11 +1157,10 @@ app.get("/api/notifications", async (req, res) => {
 
 
 // -------------------------------------------- GET APPLICANT ADMISSION DATA ------------------------------------------------//
-// ✅ GET ALL APPLICANTS (always returns all applicants)
 app.get("/api/all-applicants", async (req, res) => {
   try {
     const [rows] = await db.execute(`
-      SELECT DISTINCT
+      SELECT
         p.person_id,
         p.last_name,
         p.first_name,
@@ -1170,45 +1169,74 @@ app.get("/api/all-applicants", async (req, res) => {
         p.program,
         p.emailAddress,
         p.generalAverage1,
-        p.campus,        
-        p.created_at,              
+        p.campus,
+        p.created_at,
         a.applicant_number,
-        ea.schedule_id,                 
+        ea.schedule_id,
         ees.day_description AS exam_day,
         ees.room_description AS exam_room,
         ees.start_time AS exam_start_time,
         ees.end_time AS exam_end_time,
-        ru.upload_id,              
-        ru.document_status,
+        ru.latest_upload_id AS upload_id,
         ru.submitted_documents,
         ru.registrar_status,
-        ru.created_at AS last_updated,
+        ru.all_missing_docs,
+        rufull.document_status,
+        rufull.created_at AS last_updated,
         ps.exam_status
       FROM admission.person_table AS p
-      LEFT JOIN admission.applicant_numbering_table AS a 
+      LEFT JOIN admission.applicant_numbering_table AS a
         ON p.person_id = a.person_id
       LEFT JOIN admission.exam_applicants AS ea
         ON a.applicant_number = ea.applicant_id
       LEFT JOIN admission.entrance_exam_schedule AS ees
         ON ea.schedule_id = ees.schedule_id
-      LEFT JOIN admission.requirement_uploads AS ru 
-        ON ru.upload_id = (
-          SELECT MAX(r2.upload_id) 
-          FROM admission.requirement_uploads r2
-          WHERE r2.person_id = p.person_id
-        )
+      /* 🟢 Group uploads by person */
+      LEFT JOIN (
+        SELECT
+          person_id,
+          MAX(upload_id) AS latest_upload_id,
+          MAX(COALESCE(submitted_documents,0)) AS submitted_documents,
+          MAX(COALESCE(registrar_status,0)) AS registrar_status,
+          GROUP_CONCAT(missing_documents SEPARATOR '||') AS all_missing_docs
+        FROM admission.requirement_uploads
+        WHERE missing_documents IS NOT NULL AND missing_documents != 'null'
+        GROUP BY person_id
+      ) AS ru ON ru.person_id = p.person_id
+      LEFT JOIN admission.requirement_uploads AS rufull
+        ON rufull.upload_id = ru.latest_upload_id
       LEFT JOIN admission.person_status_table AS ps
         ON p.person_id = ps.person_id
-      ORDER BY p.last_name ASC, p.first_name ASC;
+      ORDER BY p.last_name ASC, p.first_name ASC
     `);
 
-    res.json(rows);
+    // 📝 Parse missing_documents arrays
+    const merged = rows.map(r => {
+      let mergedDocs = [];
+      if (r.all_missing_docs) {
+        const parts = r.all_missing_docs.split('||');
+        const all = parts.flatMap(item => {
+          try {
+            if (!item || item === 'null') return [];
+            return JSON.parse(item);
+          } catch {
+            return [];
+          }
+        });
+        mergedDocs = [...new Set(all)];
+      }
+      return {
+        ...r,
+        missing_documents: mergedDocs
+      };
+    });
+
+    res.json(merged);
   } catch (err) {
     console.error("❌ Error fetching all applicants:", err);
     res.status(500).send("Server error");
   }
 });
-
 
 // ================= NOT EMAILED APPLICANTS =================
 app.get("/api/not-emailed-applicants", async (req, res) => {
@@ -2006,6 +2034,95 @@ app.put("/api/person/:id/document-status", async (req, res) => {
     res.status(500).json({ error: "Failed to update document_status" });
   }
 });
+// server.js
+app.post("/api/requirement-uploads", async (req, res) => {
+  const {
+    requirements_id,
+    person_id,
+    file_path,
+    original_name,
+    status,
+    document_status,
+    missing_documents,
+    remarks
+  } = req.body;
+
+  try {
+    await db.query(
+      `INSERT INTO requirement_uploads 
+        (requirements_id, person_id, file_path, original_name, status, document_status, missing_documents, remarks)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE 
+        file_path = VALUES(file_path),
+        original_name = VALUES(original_name),
+        status = VALUES(status),
+        document_status = VALUES(document_status),
+        missing_documents = VALUES(missing_documents),
+        remarks = VALUES(remarks),
+        last_updated_by = VALUES(last_updated_by)`,
+      [requirements_id, person_id, file_path, original_name, status, document_status, missing_documents, remarks]
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Error saving requirement:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+
+// ✅ Update missing_documents for all rows of this person
+app.put("/api/missing-documents/:person_id", async (req, res) => {
+  const { person_id } = req.params;
+  let { missing_documents, user_id } = req.body;
+
+  try {
+    if (!Array.isArray(missing_documents)) {
+      missing_documents = [];
+    }
+
+    const jsonDocs = JSON.stringify(missing_documents);
+
+    await db.query(
+      `UPDATE admission.requirement_uploads
+       SET missing_documents = ?, last_updated_by = ?
+       WHERE person_id = ?`,
+      [jsonDocs, user_id || null, person_id]
+    );
+
+    res.json({ success: true, message: "Missing documents updated" });
+  } catch (err) {
+    console.error("❌ Error updating missing_documents:", err);
+    res.status(500).json({ success: false, error: "Failed to update missing_documents" });
+  }
+});
+
+
+// Update requirement upload (submitted + missing documents)
+app.post("/api/update-requirement", async (req, res) => {
+  const { person_id, requirements_id, submitted_documents } = req.body;
+  let { missing_documents } = req.body;
+
+  try {
+    if (Array.isArray(missing_documents)) {
+      missing_documents = JSON.stringify(missing_documents);
+    } else if (typeof missing_documents !== "string") {
+      missing_documents = "[]";
+    }
+
+    await db.query(
+      `UPDATE requirement_uploads 
+       SET submitted_documents = ?, missing_documents = ?
+       WHERE person_id = ? AND requirements_id = ?`,
+      [submitted_documents, missing_documents, person_id, requirements_id]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Error updating requirement:", err);
+    res.status(500).json({ error: "Failed to update requirement" });
+  }
+});
+
 
 
 /*---------------------------  ENROLLMENT -----------------------*/
@@ -6064,26 +6181,34 @@ app.post("/api/check-conflict", async (req, res) => {
       return res.status(409).json({ conflict: true, message: "This subject is already assigned to another professor in this section and school year." });
     }
 
-    // Step 2: Check for overlapping time conflicts
+    // Check for time conflicts (prof, section, room)
     const checkTimeQuery = `
       SELECT * FROM time_table
       WHERE room_day = ? 
       AND school_year_id = ?
       AND (professor_id = ? OR department_section_id = ? OR department_room_id = ?) 
       AND (
-        (? >= school_time_start AND ? <= school_time_end) OR  
-        (? >= school_time_start AND ? <= school_time_end) OR  
-        (school_time_start >= ? AND school_time_start <= ?) OR  
-        (school_time_end >= ? AND school_time_end <= ?) OR
+        (? > school_time_start AND ? < school_time_end) OR  
+        (? > school_time_start AND ? < school_time_end) OR  
+        (school_time_start > ? AND school_time_start < ?) OR  
+        (school_time_end > ? AND school_time_end < ?) OR
         (school_time_start = ? AND school_time_end = ?)
       )
     `;
-
-    const [timeResult] = await db3.query(checkTimeQuery, [day, school_year_id, prof_id, section_id, room_id, start_time, start_time, end_time, end_time, start_time, end_time, start_time, end_time, start_time, end_time]);
+    const [timeResult] = await db3.query(checkTimeQuery, [
+      day, school_year_id, prof_id, section_id, room_id,
+      start_time, start_time, end_time, end_time,
+      start_time, end_time, start_time, end_time,
+      start_time, end_time
+    ]);
 
     if (timeResult.length > 0) {
-      return res.status(409).json({ conflict: true, message: "Schedule conflict detected! Please choose a different time." });
+      return res.status(409).json({
+        conflict: true,
+        message: "Schedule conflict detected! Please choose a different time."
+      });
     }
+
 
     return res.status(200).json({ conflict: false, message: "Schedule is available." });
   } catch (error) {
@@ -6144,6 +6269,7 @@ app.post("/api/insert-schedule", async (req, res) => {
   const earliest = timeToMinutes("7:00 AM");
   const latest = timeToMinutes("9:00 PM");
 
+  // Validate times
   if (endMinutes <= startMinutes) {
     return res.status(409).json({
       conflict: true,
@@ -6158,46 +6284,59 @@ app.post("/api/insert-schedule", async (req, res) => {
     });
   }
 
-  const checkSubjectQuery = `
-    SELECT * FROM time_table
-    WHERE department_section_id = ? AND course_id = ? AND school_year_id = ? AND professor_id != ? 
-  `;
-
-  const [subjectResult] = await db3.query(checkSubjectQuery, [section_id, subject_id, school_year_id, prof_id]);
-
-  if (subjectResult.length > 0) {
-    return res.status(409).json({ conflict: true, message: "This subject is already assigned to another professor in this section and school year." });
-  }
-
-  const checkTimeQuery = `
-    SELECT * FROM time_table
-    WHERE room_day = ? 
-    AND school_year_id = ?
-    AND (professor_id = ? OR department_section_id = ? OR department_room_id = ?) 
-    AND (
-      (? >= school_time_start AND ? <= school_time_end) OR  
-      (? >= school_time_start AND ? <= school_time_end) OR  
-      (school_time_start >= ? AND school_time_start <= ?) OR  
-      (school_time_end >= ? AND school_time_end <= ?) OR
-      (school_time_start = ? AND school_time_end = ?)
-    )
-  `;
-
-  const [timeResult] = await db3.query(checkTimeQuery, [day, school_year_id, prof_id, section_id, room_id, start_time, start_time, end_time, end_time, start_time, end_time, start_time, end_time, start_time, end_time]);
-
-  if (timeResult.length > 0) {
-    return res.status(409).json({ conflict: true, message: "Schedule conflict detected! Please choose a different time." });
-  }
-
-  const query = `
-    INSERT INTO time_table 
-    (room_day, school_time_start, school_time_end, department_section_id, course_id, professor_id, department_room_id, school_year_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `;
-
   try {
-    await db3.query(query, [day, start_time, end_time, section_id, subject_id, prof_id, room_id, school_year_id]);
+    // Check if subject already assigned to another professor in same section + year
+    const checkSubjectQuery = `
+      SELECT * FROM time_table
+      WHERE department_section_id = ? AND course_id = ? AND school_year_id = ?
+    `;
+    const [subjectResult] = await db3.query(checkSubjectQuery, [section_id, subject_id, school_year_id]);
+
+    if (subjectResult.length > 0) {
+      return res.status(409).json({
+        conflict: true,
+        message: "This subject is already assigned to another professor in this section and school year."
+      });
+    }
+
+    // Check for time conflicts (prof, section, room)
+    const checkTimeQuery = `
+      SELECT * FROM time_table
+      WHERE room_day = ? 
+      AND school_year_id = ?
+      AND (professor_id = ? OR department_section_id = ? OR department_room_id = ?) 
+      AND (
+        (? > school_time_start AND ? < school_time_end) OR  
+        (? > school_time_start AND ? < school_time_end) OR  
+        (school_time_start > ? AND school_time_start < ?) OR  
+        (school_time_end > ? AND school_time_end < ?) OR
+        (school_time_start = ? AND school_time_end = ?)
+      )
+    `;
+    const [timeResult] = await db3.query(checkTimeQuery, [
+      day, school_year_id, prof_id, section_id, room_id,
+      start_time, start_time, end_time, end_time,
+      start_time, end_time, start_time, end_time,
+      start_time, end_time
+    ]);
+
+    if (timeResult.length > 0) {
+      return res.status(409).json({
+        conflict: true,
+        message: "Schedule conflict detected! Please choose a different time."
+      });
+    }
+
+    // Insert schedule
+    const insertQuery = `
+      INSERT INTO time_table 
+      (room_day, school_time_start, school_time_end, department_section_id, course_id, professor_id, department_room_id, school_year_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+    await db3.query(insertQuery, [day, start_time, end_time, section_id, subject_id, prof_id, room_id, school_year_id]);
+
     res.status(200).json({ message: "Schedule inserted successfully" });
+
   } catch (error) {
     console.error("Error inserting schedule:", error);
     res.status(500).json({ error: "Failed to insert schedule" });
@@ -8344,6 +8483,76 @@ app.get("/api/applied_program/:dprtmnt_id", async (req, res) => {
   } catch (error) {
     console.error("Error fetching curriculum data:", error);
     res.status(500).json({ error: "Database error" });
+  }
+});
+
+
+
+app.get("/api/person_data/:person_id/:role", async (req, res) => {
+
+  try {
+    const { person_id, role } = req.params;
+
+    let userData;
+
+    if (role === "faculty" || role === "registrar") {
+      const [rows] = await db3.query(
+        `SELECT 
+           pt.person_id, 
+           pt.profile_image, 
+           pt.fname, 
+           pt.lname, 
+           ua.role, 
+           ua.email
+         FROM prof_table AS pt
+         INNER JOIN user_accounts AS ua 
+           ON pt.person_id = ua.person_id
+         WHERE pt.person_id = ?`,
+        [person_id]
+      );
+      userData = rows[0];
+    } else if(role === "student") {
+      const [rows] = await db3.query(
+        `SELECT 
+           pt.person_id, 
+           pt.profile_img AS profile_image, 
+           pt.first_name AS fname, 
+           pt.last_name AS lname, 
+           ua.role, 
+           ua.email
+         FROM person_table AS pt
+         INNER JOIN user_accounts AS ua 
+           ON pt.person_id = ua.person_id
+         WHERE pt.person_id = ?`,
+        [person_id]
+      );
+      userData = rows[0];
+    } else {
+      const [rows] = await db.query(
+        `SELECT 
+           p.person_id, 
+           p.profile_img AS profile_image, 
+           p.first_name AS fname, 
+           p.last_name AS lname, 
+           ua.role, 
+           ua.email
+         FROM person_table AS p
+         INNER JOIN user_accounts AS ua 
+           ON p.person_id = ua.person_id
+         WHERE p.person_id = ?`,
+        [person_id]
+      );
+      userData = rows[0];
+    }
+
+    if (!userData) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    res.json(userData);
+  } catch (err) {
+    console.error("JWT or DB error:", err);
+    res.status(403).json({ error: "Invalid token" });
   }
 });
 
